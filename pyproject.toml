@@ -1,0 +1,28 @@
+[project]
+name = "climadace"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+  "anytree",
+  "climada",
+  "xarray",
+  "dask[distributed]",
+  "numpy",
+  "rioxarray",
+  "odc-geo",
+  "sparse",
+  "zarr",
+]
+
+[project.optional-dependencies]
+test = [
+  "hypothesis[numpy]",
+  "pytest",
+]
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
