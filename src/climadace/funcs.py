@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Callable, Mapping, Hashable, TypeVar, Sequence
 
 import xarray as xr
-import odc.geo.xr
+import odc.geo.xr  # noqa: F401
 import numpy as np
 
 from .types import DatasetOrArray, AnyXarray

@@ -5,7 +5,7 @@ from typing import Mapping, Any
 from anytree import Node, LevelOrderIter
 import xarray as xr
 import odc.geo.converters
-import odc.geo.xr
+import odc.geo.xr  # noqa: F401
 from odc.geo.geom import Geometry
 import geopandas as gpd
 

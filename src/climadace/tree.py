@@ -5,7 +5,7 @@ from pathlib import PurePath
 
 import pandas as pd
 import xarray as xr
-import odc.geo.xr
+import odc.geo.xr  # noqa: F401
 import odc.geo.converters
 
 # from odc.geo.geom import Geometry, intersects
