@@ -56,8 +56,10 @@ def split_dataset(
 
     return data_masked
 
+
 def split_from_geometry():
     pass
+
 
 def split_from_gdf(
     node: xr.Dataset | DatasetNode,

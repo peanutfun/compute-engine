@@ -15,7 +15,6 @@ import numpy.typing as npt
 
 # # TODO: Should it store a name? -> NO: Names only for registered impact functions!
 class ImpactFunctionBase(ABC):
-
     @abstractmethod
     def __call__(self, x: npt.ArrayLike) -> npt.ArrayLike:
         """Return the value of the impact function for a given hazard intensity"""
@@ -34,9 +33,7 @@ class ImpactFunctionBase(ABC):
 ImpactFunction = Callable[[npt.ArrayLike], npt.ArrayLike]
 
 
-
 class InterpolatedImpactFunction(ImpactFunctionBase):
-
     def __init__(self, xp: npt.ArrayLike, fp: npt.ArrayLike):
         super().__init__()
         self.xp = xp
@@ -63,7 +60,6 @@ class ABCSingleton(ABCMeta):
 
 
 class ImpactFunctionRegistry(MutableMapping, metaclass=ABCSingleton):
-
     def __init__(self):
         self.map = {}
         self.allow_overwrite = False

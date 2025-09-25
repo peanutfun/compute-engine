@@ -161,8 +161,7 @@ class SparseTreeAccessor:
     def to_sparse(self, override: bool = False, **to_sparse_kwargs) -> xr.DataTree:
         """Sparsify the object"""
         return map_over_datasets(
-            lambda ds: ds.sp.to_sparse(override=override, **to_sparse_kwargs),
-            self._obj
+            lambda ds: ds.sp.to_sparse(override=override, **to_sparse_kwargs), self._obj
         )
 
     def to_dense(self) -> xr.DataTree:

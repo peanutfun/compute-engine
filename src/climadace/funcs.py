@@ -94,12 +94,10 @@ def rename_spatial_dims(
     arr: DatasetOrArray, target: xr.Dataset | xr.DataArray
 ) -> DatasetOrArray:
     """Rename spatial dimensions in arr like the ones in target"""
-    arr = arr.rename(
-        {
-            arr.rio.x_dim: target.rio.x_dim,
-            arr.rio.y_dim: target.rio.y_dim,
-        }
-    )
+    arr = arr.rename({
+        arr.rio.x_dim: target.rio.x_dim,
+        arr.rio.y_dim: target.rio.y_dim,
+    })
     return arr.rio.set_spatial_dims(target.rio.x_dim, target.rio.y_dim)
 
 

@@ -13,7 +13,6 @@ from .funcs import DatasetOrArray
 
 
 class Aggregate(ABC):
-
     @property
     @abstractmethod
     def name(self) -> str: ...
@@ -29,7 +28,7 @@ class Aggregate(ABC):
         impact: xr.Dataset,
         aggregates: xr.Dataset,
         force_compute: bool = False,
-        **kwargs
+        **kwargs,
     ) -> xr.Dataset:
         if not force_compute and self.name in aggregates:
             return aggregates[self.name].to_dataset()
@@ -78,6 +77,7 @@ class AverageAnnualImpact(Aggregate):
         agg_func = kwargs.pop("agg_func", self.agg_func)
         event_impact = AtEvent()(impact=impact, aggregates=aggregates)
         return event_impact.groupby(event_impact[time_dim].dt.year).reduce(agg_func)
+
 
 class AverageEventImpact(Aggregate):
     def __init__(self, agg_func=np.mean, event_dim="event"):

@@ -300,18 +300,17 @@ class EnginePaths:
 #                 at_event[self.event_dims["time"]].dt.year
 #             ).mean()
 
+
 #         if cache_result:
 #             self.aggregates = funcs.cache_zarr(
 #                 self.aggregates, self.output_dir / "aggregates"
 #             )
 #         return self.aggregates
 def tree_divide(dset: xr.Dataset, tree: xr.DataTree):
-    return xr.DataTree.from_dict(
-        {
-            node.path: xr.align(dset, node.ds, join="right")[0]
-            for node in tree.leaves
-        }
-    )
+    return xr.DataTree.from_dict({
+        node.path: xr.align(dset, node.ds, join="right")[0] for node in tree.leaves
+    })
+
 
 class Aligner:
     def __init__(
@@ -382,6 +381,7 @@ class Aligner:
 
     def get_exposure(self) -> xr.DataTree:
         return self._exposure
+
 
 # NOTE: For applying impf to hazard, it's better if it is also a tree
 # TODO: Add sampling: List of impact function sets, method for sampling
@@ -474,7 +474,7 @@ class Engine:
         # return xr.DataTree.from_dict(
         #     {node.path: damage[node.path].ds * node.ds for node in self.exposure.leaves}
         # )
-        return map_over_datasets(lambda dmg, exp: dmg*exp, damage, self.exposure)
+        return map_over_datasets(lambda dmg, exp: dmg * exp, damage, self.exposure)
 
     def impact(self, impf_map=None):
         if impf_map is not None:

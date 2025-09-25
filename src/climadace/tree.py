@@ -280,6 +280,7 @@ def map_aggregate_function(
 
 class TreeMapper:
     """Class for mapping impact function (maps) to trees and returning the result"""
+
     def __init__(
         self,
         tree: xr.DataTree,

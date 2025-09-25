@@ -9,7 +9,7 @@ from climadace.impact_funcs import (
     InterpolatedImpactFunction,
     impact_function,
     FunctionMap,
-    ImpactFunctionMap
+    ImpactFunctionMap,
 )
 
 
@@ -19,6 +19,7 @@ def default_func_1(x):
 
 def default_func_2(x):
     return x + 2
+
 
 @pytest.mark.skip
 def test_impact_function():
@@ -39,16 +40,13 @@ def test_interpolated_impact_function():
     )
 
     # Modify
-    imp_func = InterpolatedImpactFunction.from_func(
-        xp=[0, 1, 2], impf=default_func_2
-    )
+    imp_func = InterpolatedImpactFunction.from_func(xp=[0, 1, 2], impf=default_func_2)
     npt.assert_array_equal(
         imp_func(np.array([-1, 0, 1, 2, 3])), np.array([2, 2, 3, 4, 4])
     )
 
 
 def test_impact_func_decorator():
-
     @impact_function
     def my_func(x):
         return default_func_1(x)

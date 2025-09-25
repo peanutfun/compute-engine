@@ -60,12 +60,10 @@ def test_is_chunked(simple_dataarray):
 
 
 def test_is_chunked_datatree(simple_dataarray):
-    dt = xr.DataTree.from_dict(
-        {
-            "/": simple_dataarray.to_dataset(name="root"),
-            "/a": simple_dataarray.to_dataset(name="a"),
-        }
-    )
+    dt = xr.DataTree.from_dict({
+        "/": simple_dataarray.to_dataset(name="root"),
+        "/a": simple_dataarray.to_dataset(name="a"),
+    })
     assert not is_chunked(dt)
 
     dt["/a"] = simple_dataarray.to_dataset(name="a").chunk("auto")

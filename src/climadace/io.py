@@ -81,7 +81,7 @@ def maybe_load(
     max_size: int,
     load_sparse: bool,
     assumed_sparsity: float,
-    compute_func = lambda x: x.compute(),
+    compute_func=lambda x: x.compute(),
     **to_sparse_kwargs,
 ):
     """Maybe load an xarray object into memory"""

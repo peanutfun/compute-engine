@@ -32,52 +32,46 @@ def dataset():
 
 @pytest.fixture
 def datatree(dataset):
-    return xr.DataTree.from_dict(
-        {
-            "/": dataset.copy(deep=True),
-            "/a": dataset.copy(deep=True),
-            "/a/aa": dataset.copy(deep=True),
-            "/b": dataset.copy(deep=True),
-            "/b/1": dataset.copy(deep=True),
-            "/b/2": dataset.copy(deep=True),
-            "/b/3": dataset.copy(deep=True),
-        }
-    )
+    return xr.DataTree.from_dict({
+        "/": dataset.copy(deep=True),
+        "/a": dataset.copy(deep=True),
+        "/a/aa": dataset.copy(deep=True),
+        "/b": dataset.copy(deep=True),
+        "/b/1": dataset.copy(deep=True),
+        "/b/2": dataset.copy(deep=True),
+        "/b/3": dataset.copy(deep=True),
+    })
 
 
 def test_tree_roots():
-    dt = xr.DataTree.from_dict(
-        {
-            "a": xr.Dataset(
-                {"var1": (["x", "y"], np.ones((3, 4), dtype="float"))},
-                coords={"x": np.arange(3), "y": np.arange(4)},
-            ),
-            "b": xr.Dataset(
-                {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
-                coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
-            ),
-            "a/1": xr.Dataset(
-                {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
-                coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
-            ),  # Works, does not need alignment for different dimensions
-            # "a/2": xr.Dataset(
-            #     {"var2": (["x", "y"], np.ones((3, 4), dtype="float"))},
-            #     coords={"x": np.arange(3) + 5, "y": np.arange(4) + 5},
-            # ),  # Does not work, needs alignment
-        }
-    )
+    dt = xr.DataTree.from_dict({
+        "a": xr.Dataset(
+            {"var1": (["x", "y"], np.ones((3, 4), dtype="float"))},
+            coords={"x": np.arange(3), "y": np.arange(4)},
+        ),
+        "b": xr.Dataset(
+            {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
+            coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
+        ),
+        "a/1": xr.Dataset(
+            {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
+            coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
+        ),  # Works, does not need alignment for different dimensions
+        # "a/2": xr.Dataset(
+        #     {"var2": (["x", "y"], np.ones((3, 4), dtype="float"))},
+        #     coords={"x": np.arange(3) + 5, "y": np.arange(4) + 5},
+        # ),  # Does not work, needs alignment
+    })
     print(list(dt["a"].to_dataset().data_vars.keys()))
     assert False
 
 
 def test_tree_dset_arithmetic(datatree, dataset):
-    dt = xr.DataTree.from_dict(
-        {
-            "/a": dataset.sel(x=slice(0, 1)),
-            "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
-            "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
-        }
-    )
+    dt = xr.DataTree.from_dict({
+        "/a": dataset.sel(x=slice(0, 1)),
+        "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
+        "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
+    })
     dt_new = dt.map_over_datasets(
         lambda x: np.multiply(*xr.align(x, xr.zeros_like(dataset), join="left"))
     )
@@ -86,15 +80,13 @@ def test_tree_dset_arithmetic(datatree, dataset):
 
 
 def test_map_over_datatree(datatree, dataset):
-    impf = ImpactFunctionMap(
-        {
-            FuncDefault: lambda x: x * 0,
-            FuncLeaf: lambda x: x,
-            "/a": lambda x: x * 1.5,
-            "1": lambda x: x + 1,
-            "/b/3": lambda x: x + 2,
-        }
-    )
+    impf = ImpactFunctionMap({
+        FuncDefault: lambda x: x * 0,
+        FuncLeaf: lambda x: x,
+        "/a": lambda x: x * 1.5,
+        "1": lambda x: x + 1,
+        "/b/3": lambda x: x + 2,
+    })
     tree = map_over_datatree(impf, datatree)
 
     assert tree.isomorphic(datatree)
@@ -107,13 +99,11 @@ def test_map_over_datatree(datatree, dataset):
 
 
 def test_merge_tree_dset(dataset):
-    dt = xr.DataTree.from_dict(
-        {
-            "/a": dataset.sel(x=slice(0, 1)),
-            "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
-            "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
-        }
-    )
+    dt = xr.DataTree.from_dict({
+        "/a": dataset.sel(x=slice(0, 1)),
+        "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
+        "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
+    })
     merged = merge_tree_dset(dt)
     assert merged is not dt
     xrt.assert_identical(merged.to_dataset(), dataset)
@@ -144,9 +134,13 @@ def geo_dataset():
 
 @pytest.fixture
 def geo_series():
-    return gpd.GeoSeries(
-        [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1), Point(0, 2)]
-    ).transform(lambda x: x + 0.5)
+    return gpd.GeoSeries([
+        Point(0, 0),
+        Point(1, 0),
+        Point(0, 1),
+        Point(1, 1),
+        Point(0, 2),
+    ]).transform(lambda x: x + 0.5)
 
 
 @pytest.fixture
@@ -204,9 +198,12 @@ class TestSplitFromGeo:
         dt = split_from_geo(
             geo_dataset, geo_dataframe, groupby="cat", keep_exterior=True
         )
-        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
-            [".", "_exterior", "1", "2"]
-        )
+        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted([
+            ".",
+            "_exterior",
+            "1",
+            "2",
+        ])
         assert_split_1_2(dt, geo_dataframe)
         ext = geo_dataset.copy(deep=True)
         for x, y in zip(geo_series.x, geo_series.y):
@@ -222,9 +219,12 @@ class TestSplitFromGeo:
         dt = split_from_geo(
             geo_dataset, geo_dataframe, groupby={"by": "cat", "dropna": False}
         )
-        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
-            [".", "1.0", "2.0", "nan"]
-        )
+        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted([
+            ".",
+            "1.0",
+            "2.0",
+            "nan",
+        ])
         dt_nan = geo_dataset.copy(deep=True)
         dt_nan["data"][...] = np.nan
         dt_nan["data"].loc[
