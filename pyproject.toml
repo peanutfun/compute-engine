@@ -4,7 +4,6 @@ version = "0.0.1"
 requires-python = ">=3.10"
 dependencies = [
   "anytree",
-  "climada",
   "xarray",
   "dask[distributed]",
   "numpy",
@@ -15,9 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = [
+dev = [
   "hypothesis[numpy]",
   "pytest",
+  "ruff",
 ]
 
 [build-system]
@@ -26,3 +26,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "PL", "N"]
+exclude = ["*.ipynb"]
