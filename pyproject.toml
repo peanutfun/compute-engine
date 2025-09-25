@@ -9,6 +9,7 @@ dependencies = [
   "numpy",
   "rioxarray",
   "odc-geo",
+  "geopandas",
   "sparse",
   "zarr",
 ]
