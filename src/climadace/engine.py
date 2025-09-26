@@ -11,7 +11,7 @@ import xarray as xr
 
 from . import funcs
 from .impact_funcs import ImpactFunctionMap
-from .tree import map_over_datatree, tree_is_empty, split_from_geo, map_over_datasets
+from .tree import map_impact_function, tree_is_empty, split_from_geo, map_over_datasets
 from .types import AnyXarray, DatasetOrArray, CachePolicy
 from .io import cache_zarr, maybe_cache_zarr
 
@@ -467,7 +467,7 @@ class Engine:
         self._impact = xr.DataTree()  # Resets impact
 
     def _compute_impact(self) -> xr.DataTree:
-        damage = map_over_datatree(func_map=self._impf_map, tree=self.hazard)
+        damage = map_impact_function(func_map=self._impf_map, tree=self.hazard)
         # TODO: Use binary operator for trees once this is fixed:
         #       https://github.com/pydata/xarray/issues/10013
         # assert damage.isomorphic(self.exposure)

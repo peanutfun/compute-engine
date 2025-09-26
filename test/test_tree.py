@@ -5,21 +5,29 @@ import xarray as xr
 import numpy as np
 import xarray.testing as xrt
 import geopandas as gpd
+import pandas as pd
 from shapely.geometry import Point
 from odc.geo.geobox import GeoBox
 from odc.geo.xr import xr_zeros
 
 from unittest.mock import patch
 
-
 from climadace.tree import (
-    map_over_datatree,
     merge_tree_dset,
     split_from_geo,
     dropna_spatial_dims,
     map_over_datasets,
+    TreeMapper,
+    map_impact_function,
+    map_aggregate_function,
 )
-from climadace.impact_funcs import ImpactFunctionMap, FuncDefault, FuncLeaf
+from climadace.impact_funcs import (
+    ImpactFunctionMap,
+    FuncType,
+    FuncDefault,
+    FuncLeaf,
+    REGISTRY,
+)
 
 
 @pytest.fixture
@@ -32,62 +40,198 @@ def dataset():
 
 @pytest.fixture
 def datatree(dataset):
-    return xr.DataTree.from_dict({
-        "/": dataset.copy(deep=True),
-        "/a": dataset.copy(deep=True),
-        "/a/aa": dataset.copy(deep=True),
-        "/b": dataset.copy(deep=True),
-        "/b/1": dataset.copy(deep=True),
-        "/b/2": dataset.copy(deep=True),
-        "/b/3": dataset.copy(deep=True),
-    })
-
-
-def test_tree_roots():
-    dt = xr.DataTree.from_dict({
-        "a": xr.Dataset(
-            {"var1": (["x", "y"], np.ones((3, 4), dtype="float"))},
-            coords={"x": np.arange(3), "y": np.arange(4)},
-        ),
-        "b": xr.Dataset(
-            {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
-            coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
-        ),
-        "a/1": xr.Dataset(
-            {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
-            coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
-        ),  # Works, does not need alignment for different dimensions
-        # "a/2": xr.Dataset(
-        #     {"var2": (["x", "y"], np.ones((3, 4), dtype="float"))},
-        #     coords={"x": np.arange(3) + 5, "y": np.arange(4) + 5},
-        # ),  # Does not work, needs alignment
-    })
-    print(list(dt["a"].to_dataset().data_vars.keys()))
-    assert False
-
-
-def test_tree_dset_arithmetic(datatree, dataset):
-    dt = xr.DataTree.from_dict({
-        "/a": dataset.sel(x=slice(0, 1)),
-        "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
-        "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
-    })
-    dt_new = dt.map_over_datasets(
-        lambda x: np.multiply(*xr.align(x, xr.zeros_like(dataset), join="left"))
+    return xr.DataTree.from_dict(
+        {
+            "/": dataset.copy(deep=True),
+            "/a": dataset.copy(deep=True),
+            "/a/aa": dataset.copy(deep=True),
+            "/b": dataset.copy(deep=True),
+            "/b/1": dataset.copy(deep=True),
+            "/b/2": dataset.copy(deep=True),
+            "/b/3": dataset.copy(deep=True),
+        }
     )
-    print(dt_new)
-    assert False
 
 
-def test_map_over_datatree(datatree, dataset):
-    impf = ImpactFunctionMap({
-        FuncDefault: lambda x: x * 0,
-        FuncLeaf: lambda x: x,
-        "/a": lambda x: x * 1.5,
-        "1": lambda x: x + 1,
-        "/b/3": lambda x: x + 2,
-    })
-    tree = map_over_datatree(impf, datatree)
+@pytest.mark.skip("Check for unaligned DataTree nodes")
+def test_tree_roots():
+    dt = xr.DataTree.from_dict(
+        {
+            "a": xr.Dataset(
+                {"var1": (["x", "y"], np.ones((3, 4), dtype="float"))},
+                coords={"x": np.arange(3), "y": np.arange(4)},
+            ),
+            "b": xr.Dataset(
+                {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
+                coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
+            ),
+            "a/1": xr.Dataset(
+                {"var2": (["a", "b"], np.ones((3, 4), dtype="float"))},
+                coords={"a": np.arange(3) + 5, "b": np.arange(4) + 5},
+            ),  # Works, does not need alignment for different dimensions
+            # "a/2": xr.Dataset(
+            #     {"var2": (["x", "y"], np.ones((3, 4), dtype="float"))},
+            #     coords={"x": np.arange(3) + 5, "y": np.arange(4) + 5},
+            # ),  # Does not work, needs alignment
+        }
+    )
+
+
+class TestMapOverDatasets:
+    @pytest.fixture
+    def sliced_tree(self, dataset):
+        return xr.DataTree.from_dict(
+            {
+                "/a": dataset.sel(x=slice(0, 1)),
+                "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
+                "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
+            }
+        )
+
+    @pytest.fixture
+    def sliced_tree_zero(self, sliced_tree):
+        return xr.DataTree.from_dict(
+            {
+                "/a": sliced_tree["/a"] * 0,
+                "/b/1": sliced_tree["/b/1"] * 0,
+                "/b/2": sliced_tree["/b/2"] * 0,
+            }
+        )
+
+    def test_unary(self, dataset, sliced_tree, sliced_tree_zero):
+        dt_unary = map_over_datasets(lambda x: x * xr.zeros_like(dataset), sliced_tree)
+        xr.testing.assert_equal(dt_unary, sliced_tree_zero)
+
+    def test_binary(self, sliced_tree, sliced_tree_zero):
+        dt_binary = map_over_datasets(lambda x, y: x * y, sliced_tree, sliced_tree_zero)
+        xr.testing.assert_equal(dt_binary, sliced_tree_zero)
+
+    def test_tuple_return(self, sliced_tree, sliced_tree_zero):
+        dt_eq1, dt_eq2 = map_over_datasets(
+            lambda x, y: (x * 0, y + 1), sliced_tree, sliced_tree_zero
+        )
+        xr.testing.assert_equal(dt_eq1, sliced_tree_zero)
+        xr.testing.assert_equal(dt_eq2, sliced_tree)
+
+
+@pytest.fixture
+def impf_map():
+    return ImpactFunctionMap(
+        {
+            FuncDefault: lambda x: x * 0,
+            FuncLeaf: lambda x: x,
+            "/a": lambda x: x * 1.5,
+            "1": lambda x: x + 1,
+            "/b/3": lambda x: x + 2,
+        }
+    )
+
+
+class TestTreeMapper:
+    def test_function_to_map(self):
+        def func(x):
+            return x
+
+        fmap = TreeMapper.function_to_map(func)
+        assert isinstance(fmap, dict)
+        assert fmap[FuncType.default] is func
+
+    def test_map_to_map(self, impf_map):
+        fmap = TreeMapper.function_to_map(impf_map)
+        assert fmap is impf_map
+
+    def test_empty_return(self, datatree):
+        """Check that returned tree is empty if apply() was not called"""
+        tm = TreeMapper(datatree, lambda x: x, None)
+        dt = tm.result()
+        assert dt.is_leaf
+        assert dt.is_root
+        assert not dt.has_data
+
+    def test_unchanged_return(self, datatree):
+        tm = TreeMapper(datatree, lambda x: x, None)
+        tm.apply(False, False)
+        dt = tm.result()
+        xr.testing.assert_equal(dt, datatree)
+
+    def test_apply(self, datatree, impf_map, dataset):
+        tm = TreeMapper(datatree, impf_map, None)
+        tm.apply(use_parent=False, use_merge=False)
+        tree = tm.result()
+
+        assert tree.isomorphic(datatree)
+        xrt.assert_allclose(tree["/a"].to_dataset(), dataset * 1.5)
+        xrt.assert_allclose(tree["/a/aa"].to_dataset(), dataset)  # Leaf
+        xrt.assert_allclose(tree["/b"].to_dataset(), dataset * 0)
+        xrt.assert_allclose(tree["/b/1"].to_dataset(), dataset + 1)
+        xrt.assert_allclose(tree["/b/2"].to_dataset(), dataset)  # Leaf
+        xrt.assert_allclose(tree["/b/3"].to_dataset(), dataset + 2)
+
+    def test_apply_parent(self, datatree, impf_map, dataset):
+        tm = TreeMapper(datatree, impf_map, None)
+        tm.apply(use_parent=True, use_merge=False)
+        tree = tm.result()
+
+        assert tree.isomorphic(datatree)
+        xrt.assert_allclose(tree["/a"].to_dataset(), dataset * 1.5)
+        xrt.assert_allclose(tree["/a/aa"].to_dataset(), dataset * 1.5)  # Parent
+        xrt.assert_allclose(tree["/b"].to_dataset(), dataset * 0)
+        xrt.assert_allclose(tree["/b/1"].to_dataset(), dataset + 1)
+        xrt.assert_allclose(tree["/b/2"].to_dataset(), dataset)  # Leaf
+        xrt.assert_allclose(tree["/b/3"].to_dataset(), dataset + 2)
+
+    def test_apply_merge(self, dataset):
+        dt = xr.DataTree.from_dict(
+            {
+                "/a": dataset.copy(deep=True),
+                "/b/1": dataset.copy(deep=True).sel(x=slice(0, 1)),
+                "/b/2": dataset.copy(deep=True).sel(x=slice(2, 3)),
+            }
+        )
+        impf_map = {"/b": lambda x: x}
+
+        tm = TreeMapper(dt, impf_map, None)
+        tm.apply(use_parent=False, use_merge=True)
+        tree = tm.result()
+
+        xr.testing.assert_equal(
+            tree,
+            xr.DataTree.from_dict(
+                {"/a": None, "/b": dataset, "/b/1": None, "/b/2": None}
+            ),
+        )
+
+    def test_apply_registry(self, dataset, datatree, impf_map):
+        registry = {"foo": impf_map["/b/3"]}
+        impf_map["/b/3"] = "foo"
+        tm = TreeMapper(datatree, impf_map, registry)
+        tm.apply(use_parent=False, use_merge=False)
+        tree = tm.result()
+
+        assert tree.isomorphic(datatree)
+        xrt.assert_allclose(tree["/a"].to_dataset(), dataset * 1.5)
+        xrt.assert_allclose(tree["/a/aa"].to_dataset(), dataset)
+        xrt.assert_allclose(tree["/b"].to_dataset(), dataset * 0)
+        xrt.assert_allclose(tree["/b/1"].to_dataset(), dataset + 1)
+        xrt.assert_allclose(tree["/b/2"].to_dataset(), dataset)
+        xrt.assert_allclose(tree["/b/3"].to_dataset(), dataset + 2)
+
+    def test_apply_registry_errors(self, datatree):
+        impf_map = {"/a": 1}
+        with pytest.raises(ValueError, match="Entry needs to be a function"):
+            TreeMapper(datatree, impf_map, None).apply(False, False)
+        registry = {"foo": "bar"}
+        with pytest.raises(KeyError, match="1"):
+            TreeMapper(datatree, impf_map, registry).apply(False, False)
+        registry[1] = 1
+        with pytest.raises(TypeError, match="object is not callable"):
+            TreeMapper(datatree, impf_map, registry).apply(False, False)
+
+
+def test_map_impact_function(datatree, dataset, impf_map):
+    REGISTRY["foo"] = impf_map["/b/3"]
+    impf_map["/b/3"] = "foo"
+    tree = map_impact_function(datatree, impf_map)
 
     assert tree.isomorphic(datatree)
     xrt.assert_allclose(tree["/a"].to_dataset(), dataset * 1.5)
@@ -98,31 +242,53 @@ def test_map_over_datatree(datatree, dataset):
     xrt.assert_allclose(tree["/b/3"].to_dataset(), dataset + 2)
 
 
+def test_map_aggregate_function(dataset, impf_map):
+    datatree = xr.DataTree.from_dict(
+        {
+            "/a": dataset.copy(deep=True),
+            "/b/1": dataset.copy(deep=True).sel(x=slice(0, 1)),
+            "/b/2": dataset.copy(deep=True).sel(x=slice(2, 3)),
+        }
+    )
+    impf_map = {"/b": lambda x: x}
+    tree = map_aggregate_function(datatree, impf_map)
+    xr.testing.assert_equal(
+        tree,
+        xr.DataTree.from_dict({"/a": None, "/b": dataset, "/b/1": None, "/b/2": None}),
+    )
+
+
 def test_merge_tree_dset(dataset):
-    dt = xr.DataTree.from_dict({
-        "/a": dataset.sel(x=slice(0, 1)),
-        "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
-        "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
-    })
+    dt = xr.DataTree.from_dict(
+        {
+            "/a": dataset.sel(x=slice(0, 1)),
+            "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
+            "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
+        }
+    )
     merged = merge_tree_dset(dt)
     assert merged is not dt
     xrt.assert_identical(merged.to_dataset(), dataset)
 
     # Check for hollow tree
-    with pytest.raises(RuntimeError) as exc:
+    with pytest.raises(ValueError, match="Tree must be hollow") as exc:
         merge_tree_dset(
             xr.DataTree.from_dict({"/a": dataset, "/a/1": dataset, "/a/2": dataset})
         )
         assert "Tree must be hollow" in str(exc.value)
+
+    # Check for overwrite
+    with pytest.raises(ValueError, match="Merging would overwrite"):
+        merge_tree_dset(
+            xr.DataTree.from_dict({"/": dataset, "/1": dataset, "/2": dataset}),
+            overwrite=False,
+        )
 
     # Check for quick return
     dt = xr.DataTree.from_dict({"/": dataset})
     with patch("xarray.DataTree.update") as update:
         merged = merge_tree_dset(dt)
         update.assert_not_called()
-
-
-# --- split_from_geo --- #
 
 
 @pytest.fixture
@@ -134,13 +300,9 @@ def geo_dataset():
 
 @pytest.fixture
 def geo_series():
-    return gpd.GeoSeries([
-        Point(0, 0),
-        Point(1, 0),
-        Point(0, 1),
-        Point(1, 1),
-        Point(0, 2),
-    ]).transform(lambda x: x + 0.5)
+    return gpd.GeoSeries(
+        [Point(0, 0), Point(1, 0), Point(0, 1), Point(1, 1), Point(0, 2)]
+    ).transform(lambda x: x + 0.5)
 
 
 @pytest.fixture
@@ -153,6 +315,20 @@ def geo_dataframe(geo_series):
         crs="EPSG:4326",
     )
 
+def test_dropna_spatial_dims(geo_dataset):
+    # Add non-geo coordinate
+    ds = xr.concat([geo_dataset, geo_dataset], dim=pd.Index([0, 1], name="z"))
+
+    # Non-geo coordinates (z) are ignored
+    ds["data"][1, ...] = np.nan
+    xr.testing.assert_equal(dropna_spatial_dims(ds), ds)
+
+    # Geo-coordinates (x) are dropped
+    ds["data"][..., 0] = np.nan
+    ds["data"][0, 1, 0] = np.nan  # Should not be dropped
+    xr.testing.assert_equal(dropna_spatial_dims(ds), ds.sel(longitude=slice(1.5, 2.5)))
+
+# --- split_from_geo --- #
 
 class TestSplitFromGeo:
     @pytest.fixture(autouse=True)
@@ -198,12 +374,9 @@ class TestSplitFromGeo:
         dt = split_from_geo(
             geo_dataset, geo_dataframe, groupby="cat", keep_exterior=True
         )
-        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted([
-            ".",
-            "_exterior",
-            "1",
-            "2",
-        ])
+        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
+            [".", "_exterior", "1", "2"]
+        )
         assert_split_1_2(dt, geo_dataframe)
         ext = geo_dataset.copy(deep=True)
         for x, y in zip(geo_series.x, geo_series.y):
@@ -219,12 +392,9 @@ class TestSplitFromGeo:
         dt = split_from_geo(
             geo_dataset, geo_dataframe, groupby={"by": "cat", "dropna": False}
         )
-        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted([
-            ".",
-            "1.0",
-            "2.0",
-            "nan",
-        ])
+        assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
+            [".", "1.0", "2.0", "nan"]
+        )
         dt_nan = geo_dataset.copy(deep=True)
         dt_nan["data"][...] = np.nan
         dt_nan["data"].loc[

@@ -18,7 +18,7 @@ def zero_to_nan(array: ArrayLike, exact: bool = False) -> np.ndarray:
     # Exact or inexact comparison
     compare_op = np.equal
     if not exact:
-        compare_op = np.allclose
+        compare_op = np.isclose
 
     # Compare
     array = np.where(compare_op(array, 0), np.nan, array)
@@ -38,10 +38,10 @@ class SparseArray(sparse.GCXS):
 
 def to_sparse(
     data: xr.DataArray,
-    array_type: type[AnySparseArray] = sparse.GCXS,
+    array_type: type[AnySparseArray] = SparseArray,
     dtype: DTypeLike | None = None,
-    preprocess: Callable[[ArrayLike], ArrayLike] = lambda x: x,
-    fill_value=None,
+    preprocess: Callable[[ArrayLike], ArrayLike] = zero_to_nan,
+    fill_value=np.nan,
 ) -> xr.DataArray:
     """Make sparse"""
     if dtype is None:
