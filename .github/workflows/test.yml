@@ -28,9 +28,9 @@ jobs:
           path: |
             ~/.cache/pip
             ~/.cache/pre-commit
-          key: ${GITHUB_REF}-${{ steps.date.outputs.date }}
+          key: $GITHUB_REF-${{ steps.date.outputs.date }}
           restore-keys: |
-            ${GITHUB_REF}
+            $GITHUB_REF
             main
       -
         name: Lint code with Ruff
