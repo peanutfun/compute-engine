@@ -43,6 +43,17 @@ def test_accessor(arr):
     assert not arr.sp.is_sparse
     assert arr.sp.array is None
 
+def test_sparse():
+    arr = xr.DataArray([np.nan], coords={"x": [0]})
+    arr_sp = arr.sp.to_sparse()
+    assert not arr.sp.is_sparse
+    assert arr_sp.sp.is_sparse
+    assert isinstance(arr_sp.sp.array, SparseArray)
+    print(arr_sp.sp.array)
+
+    nnz = np.count_nonzero(~np.isnan(zero_to_nan(arr)))
+    density = nnz / arr.size
+    assert arr_sp.sp.array.density == density
 
 @given(array())
 def test_sparsify(arr):
