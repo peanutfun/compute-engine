@@ -1,11 +1,8 @@
 """Impact Functions"""
 
 from functools import partial
-from pathlib import PurePath
-from typing import Mapping, Hashable, Dict, Final, Callable, Type, Any
-from dataclasses import dataclass
+from typing import Final, Callable, Any
 from enum import StrEnum, auto
-from collections import UserDict
 from abc import ABC, abstractmethod, ABCMeta
 from collections.abc import MutableMapping
 

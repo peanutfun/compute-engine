@@ -1,25 +1,17 @@
 """Operations on trees"""
 
-from typing import Mapping, Any, TypeAlias, Callable, Hashable
-from pathlib import PurePath
-from functools import partial
-from typing import overload
+from typing import Mapping, Any, Callable, Hashable
 
-import pandas as pd
 import xarray as xr
 import odc.geo.xr  # noqa: F401
 import odc.geo.converters
 
 # from odc.geo.geom import Geometry, intersects
 import odc.geo.geom
-from odc.geo.geobox import GeoBox
 import geopandas as gpd
 
 from .types import DatasetOrArray, DatasetFunction
 from .impact_funcs import (
-    ImpactFunctionMap,
-    FuncDefault,
-    FuncLeaf,
     FunctionMap,
     FuncType,
     REGISTRY,

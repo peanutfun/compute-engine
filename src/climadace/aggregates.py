@@ -3,10 +3,9 @@
 import xarray as xr
 import numpy as np
 from numpy.typing import ArrayLike
-import rioxarray
 from abc import ABC, abstractmethod
 
-from typing import Mapping, Hashable, Callable, Any, Sequence
+from typing import Hashable
 
 from .funcs import DatasetOrArray
 # from .tree import DatasetNode

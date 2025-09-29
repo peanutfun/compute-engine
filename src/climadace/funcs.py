@@ -1,11 +1,11 @@
 """Functions"""
 
 from pathlib import Path
-from datetime import datetime
-from typing import Callable, Mapping, Hashable, TypeVar, Sequence
+from typing import Callable, Mapping, Hashable, TypeVar
 
 import xarray as xr
 import odc.geo.xr  # noqa: F401
+import rioxarray  # noqa: F401
 import numpy as np
 
 from .types import DatasetOrArray, AnyXarray

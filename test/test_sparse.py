@@ -3,10 +3,9 @@
 import pytest
 import xarray as xr
 import numpy as np
-from hypothesis import strategies as st, given, settings, Verbosity
+from hypothesis import strategies as st, given
 from hypothesis.extra.numpy import array_shapes, arrays
 
-import climadace.sparse
 from climadace.sparse import zero_to_nan, SparseArray
 
 

@@ -1,7 +1,6 @@
 """Sparse operations"""
 
 from typing import Hashable, Callable, Mapping
-from functools import partial
 
 import sparse
 import xarray as xr

@@ -1,11 +1,10 @@
 """Compute Engine"""
 
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar, Callable, Hashable, Sequence, Any, overload
+from typing import Callable, Hashable, Sequence, Any, overload
 from datetime import datetime
 from enum import Enum, auto
-import copy
 
 import xarray as xr
 import pandas as pd
@@ -14,7 +13,7 @@ from . import funcs
 from .impact_funcs import ImpactFunctionMap
 from .tree import map_impact_function, tree_is_empty, split_from_geo, map_over_datasets
 from .types import AnyXarray, DatasetOrArray, CachePolicy, DatasetFunction
-from .io import cache_zarr, maybe_cache_zarr
+from .io import maybe_cache_zarr
 
 
 BASE_DIR = Path("~/Desktop/ImpactEngine").expanduser()

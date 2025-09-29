@@ -3,7 +3,6 @@
 import pytest
 import xarray as xr
 import numpy as np
-import numpy.testing as npt
 import pandas as pd
 
 from climadace.tree import map_over_datasets
@@ -75,7 +74,7 @@ def test_impact(hazard, exposure, datatree):
 def test_impact_multi_map(hazard, exposure, datatree):
     impf_map = [
         ImpactFunctionMap({FuncType.leaf: lambda x: x}),
-        ImpactFunctionMap({FuncType.leaf: lambda x: x * 2}),
+        lambda x: x * 2,
         ImpactFunctionMap({FuncType.leaf: lambda x: x * 3}),
     ]
     engine = Engine(hazard, exposure, impf_map)

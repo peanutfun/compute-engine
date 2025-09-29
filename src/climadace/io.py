@@ -1,12 +1,10 @@
 """Load and store data"""
 
 from pathlib import Path
-from collections.abc import Callable, Mapping
-from typing import Any
+from collections.abc import Callable
 
 import xarray as xr
 
-from . import sparse
 from .types import AnyXarray, CachePolicy
 from .funcs import is_chunked, norm_chunks
 

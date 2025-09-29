@@ -1,6 +1,5 @@
 """Operations on trees"""
 
-from typing import Mapping, Any
 
 from anytree import Node, LevelOrderIter
 import xarray as xr

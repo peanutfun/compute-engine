@@ -2,15 +2,12 @@ import pytest
 import numpy as np
 import numpy.testing as npt
 import xarray as xr
-from unittest import mock
-from pathlib import Path
-import rioxarray
+import rioxarray  # noqa: F401
 
 from climadace import (
     normed_chunksize,
     norm_chunks,
     rename_spatial_dims,
-    reproject_hazard,
     is_chunked,
     merge_dicts,
 )
