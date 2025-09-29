@@ -114,7 +114,6 @@ REGISTRY = ImpactFunctionRegistry()
 #             return InterpolatedImpactFunction(func=func, xp=self.interpolate)
 #         return ImpactFunction(func=func)
 
-
 # Define decorator
 def impact_function(
     func=None, *, interp_at: npt.ArrayLike | None = None, name: str | None = None

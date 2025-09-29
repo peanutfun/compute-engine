@@ -8,11 +8,12 @@ from enum import Enum, auto
 import copy
 
 import xarray as xr
+import pandas as pd
 
 from . import funcs
 from .impact_funcs import ImpactFunctionMap
 from .tree import map_impact_function, tree_is_empty, split_from_geo, map_over_datasets
-from .types import AnyXarray, DatasetOrArray, CachePolicy
+from .types import AnyXarray, DatasetOrArray, CachePolicy, DatasetFunction
 from .io import cache_zarr, maybe_cache_zarr
 
 
@@ -307,9 +308,9 @@ class EnginePaths:
 #             )
 #         return self.aggregates
 def tree_divide(dset: xr.Dataset, tree: xr.DataTree):
-    return xr.DataTree.from_dict({
-        node.path: xr.align(dset, node.ds, join="right")[0] for node in tree.leaves
-    })
+    return xr.DataTree.from_dict(
+        {node.path: xr.align(dset, node.ds, join="right")[0] for node in tree.leaves}
+    )
 
 
 class Aligner:
@@ -384,7 +385,6 @@ class Aligner:
 
 
 # NOTE: For applying impf to hazard, it's better if it is also a tree
-# TODO: Add sampling: List of impact function sets, method for sampling
 # TODO: Add aggregates
 class Engine:
     # hazard: xr.Dataset
@@ -400,7 +400,7 @@ class Engine:
         self,
         hazard: xr.DataTree | xr.Dataset,  # Makes sense? Tree MUST align with exposure
         exposure: xr.DataTree,
-        impf_map,
+        impf_map: ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap],
         *,
         workdir: Path | None = None,
         cache_policy: CachePolicy = CachePolicy.if_chunked,
@@ -458,29 +458,70 @@ class Engine:
         return maybe_cache_zarr(arr=data, path=path, cache_policy=self._cache_policy)
 
     @property
-    def impf_map(self):
+    def impf_map(
+        self,
+    ) -> ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap]:
         return self._impf_map
 
     @impf_map.setter
-    def impf_map(self, value):
+    def impf_map(
+        self, value: ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap]
+    ):
         self._impf_map = value
         self._impact = xr.DataTree()  # Resets impact
 
+    def _compute_single_impact(
+        self,
+        impf_map: ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap],
+    ) -> xr.DataTree:
+        damage = map_impact_function(func_map=impf_map, tree=self.hazard)
+        return map_over_datasets(lambda dmg, exp: dmg * exp, damage, self.exposure)
+
     def _compute_impact(self) -> xr.DataTree:
-        damage = map_impact_function(func_map=self._impf_map, tree=self.hazard)
+        # Single function case
+        if isinstance(self._impf_map, ImpactFunctionMap) or callable(self._impf_map):
+            return self._compute_single_impact(impf_map=self._impf_map)
+
+        # Multi-function case
+        impacts = (
+            self._compute_single_impact(impf_map=impf_map)
+            for impf_map in self._impf_map
+        )
+        return map_over_datasets(
+            lambda *dsets: xr.concat(
+                dsets,
+                dim=pd.Index(list(range(len(self._impf_map))), name="impact_function"),
+            ),
+            *impacts,
+        )
+
         # TODO: Use binary operator for trees once this is fixed:
         #       https://github.com/pydata/xarray/issues/10013
         # assert damage.isomorphic(self.exposure)
         # return xr.DataTree.from_dict(
         #     {node.path: damage[node.path].ds * node.ds for node in self.exposure.leaves}
         # )
-        return map_over_datasets(lambda dmg, exp: dmg * exp, damage, self.exposure)
 
-    def impact(self, impf_map=None):
+    def _sample_impact(self, samples: pd.DataFrame) -> xr.DataTree:
+        impact_samples = (
+            self._impact.sel(**sample) for _, sample in samples.iterrows()
+        )
+        return map_over_datasets(
+            lambda *dsets: xr.concat(dsets, dim=pd.Index(samples.index, name="sample")),
+            *impact_samples,
+        )
+
+    def impact(
+        self, impf_map=None, *, samples: pd.DataFrame | None = None
+    ) -> xr.DataTree:
         if impf_map is not None:
             self.impf_map = impf_map
         if tree_is_empty(self._impact):
-            self._impact = self._maybe_cache(self._compute_impact(), self._paths.impact)
+            self._impact = self._compute_impact()
+        if samples is not None:
+            self._impact = self._sample_impact(samples)
+
+        self._maybe_cache(self._impact, self._paths.impact)
         return self._impact
 
     # def aggregates(self, *aggregates):
