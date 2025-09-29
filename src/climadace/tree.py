@@ -1,21 +1,21 @@
 """Operations on trees"""
 
-from typing import Mapping, Any, Callable, Hashable
+from typing import Any, Callable, Hashable, Mapping
 
-import xarray as xr
-import odc.geo.xr  # noqa: F401
+import geopandas as gpd
 import odc.geo.converters
 
 # from odc.geo.geom import Geometry, intersects
 import odc.geo.geom
-import geopandas as gpd
+import odc.geo.xr  # noqa: F401
+import xarray as xr
 
-from .types import DatasetOrArray, DatasetFunction
 from .impact_funcs import (
+    REGISTRY,
     FunctionMap,
     FuncType,
-    REGISTRY,
 )
+from .types import DatasetFunction, DatasetOrArray
 
 
 def filter_dsets(

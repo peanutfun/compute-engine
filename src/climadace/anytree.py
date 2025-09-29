@@ -1,12 +1,12 @@
 """Operations on trees"""
 
 
-from anytree import Node, LevelOrderIter
-import xarray as xr
+import geopandas as gpd
 import odc.geo.converters
 import odc.geo.xr  # noqa: F401
+import xarray as xr
+from anytree import LevelOrderIter, Node
 from odc.geo.geom import Geometry
-import geopandas as gpd
 
 from .funcs import DatasetOrArray
 

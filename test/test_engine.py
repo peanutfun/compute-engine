@@ -1,13 +1,13 @@
 """Tests for impact engine"""
 
-import pytest
-import xarray as xr
 import numpy as np
 import pandas as pd
+import pytest
+import xarray as xr
 
-from climadace.tree import map_over_datasets
 from climadace.engine import Engine
-from climadace.impact_funcs import ImpactFunctionMap, FuncType
+from climadace.impact_funcs import FuncType, ImpactFunctionMap
+from climadace.tree import map_over_datasets
 
 
 @pytest.fixture

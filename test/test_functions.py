@@ -1,15 +1,15 @@
-import pytest
 import numpy as np
 import numpy.testing as npt
-import xarray as xr
+import pytest
 import rioxarray  # noqa: F401
+import xarray as xr
 
 from climadace import (
-    normed_chunksize,
-    norm_chunks,
-    rename_spatial_dims,
     is_chunked,
     merge_dicts,
+    norm_chunks,
+    normed_chunksize,
+    rename_spatial_dims,
 )
 
 

@@ -1,14 +1,14 @@
 """Functions"""
 
 from pathlib import Path
-from typing import Callable, Mapping, Hashable, TypeVar
+from typing import Callable, Hashable, Mapping, TypeVar
 
-import xarray as xr
+import numpy as np
 import odc.geo.xr  # noqa: F401
 import rioxarray  # noqa: F401
-import numpy as np
+import xarray as xr
 
-from .types import DatasetOrArray, AnyXarray
+from .types import AnyXarray, DatasetOrArray
 
 # from . import sparse
 

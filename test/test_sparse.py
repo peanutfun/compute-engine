@@ -1,12 +1,13 @@
 """Test functions for sparse operations"""
 
+import numpy as np
 import pytest
 import xarray as xr
-import numpy as np
-from hypothesis import strategies as st, given
+from hypothesis import given
+from hypothesis import strategies as st
 from hypothesis.extra.numpy import array_shapes, arrays
 
-from climadace.sparse import zero_to_nan, SparseArray
+from climadace.sparse import SparseArray, zero_to_nan
 
 
 @st.composite

@@ -1,32 +1,32 @@
 """Test functions for tree operations"""
 
-import pytest
-import xarray as xr
-import numpy as np
-import xarray.testing as xrt
-import geopandas as gpd
-import pandas as pd
-from shapely.geometry import Point
-from odc.geo.geobox import GeoBox
-from odc.geo.xr import xr_zeros
-
 from unittest.mock import patch
 
-from climadace.tree import (
-    merge_tree_dset,
-    split_from_geo,
-    dropna_spatial_dims,
-    map_over_datasets,
-    TreeMapper,
-    map_impact_function,
-    map_aggregate_function,
-)
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import pytest
+import xarray as xr
+import xarray.testing as xrt
+from odc.geo.geobox import GeoBox
+from odc.geo.xr import xr_zeros
+from shapely.geometry import Point
+
 from climadace.impact_funcs import (
-    ImpactFunctionMap,
-    FuncType,
+    REGISTRY,
     FuncDefault,
     FuncLeaf,
-    REGISTRY,
+    FuncType,
+    ImpactFunctionMap,
+)
+from climadace.tree import (
+    TreeMapper,
+    dropna_spatial_dims,
+    map_aggregate_function,
+    map_impact_function,
+    map_over_datasets,
+    merge_tree_dset,
+    split_from_geo,
 )
 
 

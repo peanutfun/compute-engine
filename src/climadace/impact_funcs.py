@@ -1,10 +1,10 @@
 """Impact Functions"""
 
-from functools import partial
-from typing import Final, Callable, Any
-from enum import StrEnum, auto
-from abc import ABC, abstractmethod, ABCMeta
+from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import MutableMapping
+from enum import StrEnum, auto
+from functools import partial
+from typing import Any, Callable, Final
 
 import numpy as np
 import numpy.typing as npt

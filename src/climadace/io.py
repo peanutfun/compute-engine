@@ -1,12 +1,12 @@
 """Load and store data"""
 
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 
 import xarray as xr
 
-from .types import AnyXarray, CachePolicy
 from .funcs import is_chunked, norm_chunks
+from .types import AnyXarray, CachePolicy
 
 # DatasetOrArray = TypeVar("DatasetOrArray", xr.Dataset, xr.DataArray)
 

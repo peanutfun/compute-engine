@@ -1,11 +1,11 @@
 """Sparse operations"""
 
-from typing import Hashable, Callable, Mapping
+from typing import Callable, Hashable, Mapping
 
+import numpy as np
 import sparse
 import xarray as xr
-import numpy as np
-from numpy.typing import DTypeLike, ArrayLike
+from numpy.typing import ArrayLike, DTypeLike
 
 from .tree import map_over_datasets
 
