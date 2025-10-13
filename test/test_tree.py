@@ -315,6 +315,7 @@ def test_merge_tree_dset(dataset):
     assert merged is not dt
     xrt.assert_identical(merged.to_dataset(), dataset)
 
+
 def test_merge_tree_dset_overlap(dataset):
     ds_a = dataset.copy(deep=True).sel(x=slice(0, 1))
     ds_a["var"].loc[{"x": 1, "y": 0}] = np.nan  # NOTE: Overlap with NaN is OK!
@@ -328,6 +329,7 @@ def test_merge_tree_dset_overlap(dataset):
     merged = merge_tree_dset(dt)
     assert merged is not dt
     xrt.assert_identical(merged.to_dataset(), dataset)
+
 
 def test_merge_tree_dset_errors(dataset):
     # Check for hollow tree

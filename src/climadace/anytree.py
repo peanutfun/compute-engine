@@ -1,6 +1,5 @@
 """Operations on trees"""
 
-
 import geopandas as gpd
 import odc.geo.converters
 import odc.geo.xr  # noqa: F401
