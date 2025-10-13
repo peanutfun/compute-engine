@@ -99,7 +99,6 @@ def at_event(arr: DatasetOrArray) -> DatasetOrArray:
     """Return the total impact for each event"""
     return arr.sum(dim=[arr.rio.x_dim, arr.rio.y_dim])
 
-
 # def average_annual_impact(
 #     arr: xr.DataArray,
 #     time_dim: str = "time",

@@ -7,13 +7,14 @@ import xarray as xr
 
 from .funcs import is_chunked, norm_chunks
 from .types import AnyXarray, CachePolicy
+from . import sparse  # noqa: F401
 
 # DatasetOrArray = TypeVar("DatasetOrArray", xr.Dataset, xr.DataArray)
 
 
 def open_xr(
     open_f: Callable[..., AnyXarray],
-    path: Path | str,
+    filename_or_obj: Path | str,
     **kwargs,
 ) -> AnyXarray:
     """Open any xarray object with the appropriate function"""
@@ -21,7 +22,7 @@ def open_xr(
         "chunks": "auto",
         "decode_coords": "all",
     } | kwargs
-    return open_f(path, **open_kwargs)
+    return open_f(filename_or_obj, **open_kwargs)
 
 
 def write_zarr(arr: AnyXarray, path: Path | str, mode: str = "w", **kwargs):
@@ -84,6 +85,7 @@ def maybe_load(
 ):
     """Maybe load an xarray object into memory"""
     if not is_chunked(arr):
+        # Already loaded
         return arr
 
     size = arr.nbytes
@@ -92,3 +94,18 @@ def maybe_load(
     elif size > max_size:
         return arr
     return compute_func(arr)
+
+
+def open_dataarray(filename_or_obj, **kwargs):
+    """Open a chunked DataArray"""
+    return open_xr(xr.open_dataarray, filename_or_obj, **kwargs)
+
+
+def open_dataset(filename_or_obj, **kwargs):
+    """Open a chunked Dataset"""
+    return open_xr(xr.open_dataset, filename_or_obj, **kwargs)
+
+
+def open_datatree(filename_or_obj, **kwargs):
+    """Open a chunked DataTree"""
+    return open_xr(xr.open_datatree, filename_or_obj, **kwargs)

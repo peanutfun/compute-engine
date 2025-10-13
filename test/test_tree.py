@@ -1,6 +1,7 @@
 """Test functions for tree operations"""
 
 from unittest.mock import patch
+from itertools import product
 
 import geopandas as gpd
 import numpy as np
@@ -21,6 +22,7 @@ from climadace.impact_funcs import (
 )
 from climadace.tree import (
     TreeMapper,
+    TreeSplitter,
     dropna_spatial_dims,
     map_aggregate_function,
     map_impact_function,
@@ -112,6 +114,49 @@ class TestMapOverDatasets:
         )
         xr.testing.assert_equal(dt_eq1, sliced_tree_zero)
         xr.testing.assert_equal(dt_eq2, sliced_tree)
+
+
+class TestTreeSplitter:
+    @pytest.fixture
+    def splitter(self, datatree):
+        return TreeSplitter(tree=datatree["/b"])
+
+    def test_init(self, dataset):
+        ts = TreeSplitter(tree=dataset)
+        assert isinstance(ts.tree, xr.DataTree)
+
+    @pytest.fixture
+    def splitter_with_child_nodes(self, splitter, dataset):
+        splitter.child_nodes = [
+            xr.DataTree(dataset, name="foo"),
+            xr.DataTree(dataset, name="bar"),
+        ]
+        return splitter
+
+    @pytest.mark.parametrize(
+        "inplace,prune_node", list(product((True, False), repeat=2))
+    )
+    def test_result(self, splitter_with_child_nodes, dataset, inplace, prune_node):
+        result = splitter_with_child_nodes.result(
+            inplace=inplace, prune_node=prune_node
+        )
+
+        if inplace:
+            assert result is None
+            result = splitter_with_child_nodes.tree
+            assert not result.is_root
+        else:
+            assert result is not splitter_with_child_nodes.tree
+            assert result.is_root
+
+        assert result.children == {
+            "foo": xr.DataTree(dataset),
+            "bar": xr.DataTree(dataset),
+        }
+        comparison = dataset
+        if prune_node:
+            comparison = dataset.drop_vars("var") if inplace else xr.Dataset()
+        xr.testing.assert_equal(result.to_dataset(), comparison)
 
 
 @pytest.fixture
@@ -270,6 +315,21 @@ def test_merge_tree_dset(dataset):
     assert merged is not dt
     xrt.assert_identical(merged.to_dataset(), dataset)
 
+def test_merge_tree_dset_overlap(dataset):
+    ds_a = dataset.copy(deep=True).sel(x=slice(0, 1))
+    ds_a["var"].loc[{"x": 1, "y": 0}] = np.nan  # NOTE: Overlap with NaN is OK!
+    dt = xr.DataTree.from_dict(
+        {
+            "/a": ds_a,
+            "/b/1": dataset.sel(x=slice(1, 3), y=slice(0, 1)),
+            "/b/2": dataset.sel(x=slice(1, 3), y=slice(2, 4)),
+        }
+    )
+    merged = merge_tree_dset(dt)
+    assert merged is not dt
+    xrt.assert_identical(merged.to_dataset(), dataset)
+
+def test_merge_tree_dset_errors(dataset):
     # Check for hollow tree
     with pytest.raises(ValueError, match="Tree must be hollow") as exc:
         merge_tree_dset(
@@ -287,7 +347,7 @@ def test_merge_tree_dset(dataset):
     # Check for quick return
     dt = xr.DataTree.from_dict({"/": dataset})
     with patch("xarray.DataTree.update") as update:
-        merged = merge_tree_dset(dt)
+        merge_tree_dset(dt)
         update.assert_not_called()
 
 
@@ -315,6 +375,7 @@ def geo_dataframe(geo_series):
         crs="EPSG:4326",
     )
 
+
 def test_dropna_spatial_dims(geo_dataset):
     # Add non-geo coordinate
     ds = xr.concat([geo_dataset, geo_dataset], dim=pd.Index([0, 1], name="z"))
@@ -328,7 +389,9 @@ def test_dropna_spatial_dims(geo_dataset):
     ds["data"][0, 1, 0] = np.nan  # Should not be dropped
     xr.testing.assert_equal(dropna_spatial_dims(ds), ds.sel(longitude=slice(1.5, 2.5)))
 
+
 # --- split_from_geo --- #
+
 
 class TestSplitFromGeo:
     @pytest.fixture(autouse=True)

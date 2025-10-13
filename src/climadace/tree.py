@@ -1,14 +1,14 @@
 """Operations on trees"""
 
-from typing import Any, Callable, Hashable, Mapping
+from typing import Any, Callable, Hashable, Mapping, overload
 
 import geopandas as gpd
 import odc.geo.converters
-
-# from odc.geo.geom import Geometry, intersects
 import odc.geo.geom
 import odc.geo.xr  # noqa: F401
 import xarray as xr
+import numpy as np
+from shapely.geometry import Polygon
 
 from .impact_funcs import (
     REGISTRY,
@@ -80,127 +80,165 @@ def mask_dataset(
 
 
 def split_from_groupby_bins(
-    node: xr.Dataset | xr.DataTree, prune_node: bool = True, **groupby_bins_kwargs
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = True,
+    inplace: bool = False,
+    **groupby_bins_kwargs,
 ):
-    if not isinstance(node, xr.DataTree):
-        node = xr.DataTree(dataset=node)
-    child_nodes = _nodes_from_dsgroupby(
-        node.dataset.groupby_bins(**groupby_bins_kwargs)
-    )
-
-    # Create new tree
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.DataTree(
-                dataset=node.dataset if not prune_node else None, name=node.name
-            )
-        }
-        | {f"/{child.name}": child for child in child_nodes}
-    )
+    splitter = TreeSplitter(tree=node)
+    splitter.split_from_groupby_bins(**groupby_bins_kwargs)
+    return splitter.result(inplace=inplace, prune_node=prune_node)
 
 
 def split_from_groupby(
-    node: xr.Dataset | xr.DataTree, prune_node: bool = True, **groupby_kwargs
-) -> xr.DataTree:
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = True,
+    inplace: bool = False,
+    **groupby_kwargs,
+) -> xr.DataTree | None:
     """Split using groupby"""
-    if not isinstance(node, xr.DataTree):
-        node = xr.DataTree(dataset=node)
-    child_nodes = _nodes_from_dsgroupby(node.dataset.groupby(**groupby_kwargs))
-
-    # Create new tree
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.DataTree(
-                dataset=node.dataset if not prune_node else None, name=node.name
-            )
-        }
-        | {f"/{child.name}": child for child in child_nodes}
-    )
+    splitter = TreeSplitter(tree=node)
+    splitter.split_from_groupby(**groupby_kwargs)
+    return splitter.result(inplace=inplace, prune_node=prune_node)
 
 
-def _nodes_from_dsgroupby(groupby) -> list[xr.DataTree]:
-    return [xr.DataTree(ds, name=group) for ds, group in groupby]
-
-
+# TODO: Low resolution mode (convert CRS of gdf, not geometry)
 def split_from_geo(
     node: xr.Dataset | xr.DataTree,
     gdf: gpd.GeoDataFrame,
     *,
-    groupby: str | Mapping[str, Any] = "",
+    high_precision: bool = False,
     keep_exterior: bool = False,
     prune_node: bool = True,
-    dropna: bool = False,
-    **mask_kwargs,
-) -> xr.DataTree:
+    inplace: bool = False,
+    groupby_kws: Mapping | None = None,
+    mask_kws: Mapping | None = None,
+) -> xr.DataTree | None:
     """Split a dataset into subsets and return them as tree leaves"""
-    if not isinstance(node, xr.DataTree):
-        node = xr.DataTree(dataset=node)
-    if gdf.empty:
-        return node
-    gdf = gdf.copy(deep=False)
+    splitter = TreeSplitter(tree=node)
+    splitter.split_from_dataframe(
+        gdf=gdf,
+        keep_exterior=keep_exterior,
+        high_precision=high_precision,
+        groupby_kws=groupby_kws,
+        mask_kws=mask_kws,
+    )
+    return splitter.result(inplace=inplace, prune_node=prune_node)
 
-    # Sanitize groupby kwargs
-    groupby_kwargs = {}
-    if isinstance(groupby, str):
-        if groupby == "":
+
+class TreeSplitter:
+    def __init__(self, tree: xr.DataTree | xr.Dataset):
+        if not isinstance(tree, xr.DataTree):
+            tree = xr.DataTree(dataset=tree)
+        self.tree = tree
+        self.child_nodes: list[xr.DataTree] = []
+
+    def split_from_dataframe(
+        self,
+        gdf: gpd.GeoDataFrame,
+        keep_exterior: bool,
+        high_precision: bool = False,
+        groupby_kws: Mapping[str, Any] | None = None,
+        mask_kws: Mapping[str, Any] | None = None,
+    ):
+        if gdf.empty:
+            return
+        gdf = gdf.copy(deep=False)
+        mask_kws = {"all_touched": False} | (
+            dict(mask_kws) if mask_kws is not None else {}
+        )
+        print(mask_kws)
+
+        # Geospatial data of the dataset
+        geobox = self.tree.to_dataset().odc.geobox
+        ds_extent = geobox.extent
+        crs = geobox.crs
+        resolution = np.min(np.abs(geobox.resolution.xy))
+
+        if not high_precision:
+            gdf = gdf.to_crs(crs)
+
+        # Infer groupby kwargs
+        if groupby_kws is None:
             if len(gdf.columns) > 2:
                 raise ValueError(
                     "GeoDataFrame must have exactly one other column than the geomtry "
                     "column to infer groupby key"
                 )
-            groupby = gdf.drop(columns=gdf.active_geometry_name).columns[0]
-        groupby_kwargs["by"] = groupby
-    else:
-        groupby_kwargs = groupby
+            groupby_kws = {"by": gdf.drop(columns=gdf.active_geometry_name).columns[0]}
 
-    # Convert to odc geometries
-    odc_geometry_col = "_" + (gdf.active_geometry_name or "geometry") + "_odc"
-    gdf[odc_geometry_col] = odc.geo.converters.from_geopandas(gdf.geometry)
+        # Convert to odc geometries
+        odc_geometry_col = "_" + (gdf.active_geometry_name or "geometry") + "_odc"
+        gdf[odc_geometry_col] = odc.geo.converters.from_geopandas(gdf.geometry)
 
-    # Interate over groups
-    child_nodes = []
-    ds_extent = node.to_dataset().odc.geobox.extent
-    for group, data in gdf.groupby(**groupby_kwargs):
-        # Merge geometries
-        geo_interior = odc.geo.geom.unary_union(data[odc_geometry_col])
-        if not odc.geo.geom.intersects(geo_interior, ds_extent):
-            continue
+        # Interate over groups
+        for group, data in gdf.groupby(**groupby_kws):
+            # Merge group geometries
+            geo_interior = odc.geo.geom.unary_union(data[odc_geometry_col])
+            assert geo_interior is not None
+            if high_precision:
+                geo_interior = geo_interior.to_crs(crs, resolution=resolution)
+            if not odc.geo.geom.intersects(geo_interior, ds_extent):
+                continue
 
-        child_nodes.append(
-            xr.DataTree(
-                dataset=mask_dataset(
-                    node.dataset, geo_interior, dropna=dropna, **mask_kwargs
-                ),
-                name=str(group),
+            self.child_nodes.append(
+                xr.DataTree(
+                    dataset=mask_dataset(self.tree.dataset, geo_interior, **mask_kws),
+                    name=str(group),
+                )
             )
+
+        # Maybe return outside
+        if keep_exterior:
+            geo_exterior = odc.geo.geom.unary_union(gdf[odc_geometry_col])
+            assert geo_exterior is not None
+            if high_precision:
+                geo_exterior = geo_exterior.to_crs(crs, resolution=resolution)
+            if not odc.geo.geom.intersects(geo_exterior, ds_extent):
+                return
+
+            invert = mask_kws.pop("invert", False)
+            self.child_nodes.append(
+                xr.DataTree(
+                    dataset=mask_dataset(
+                        self.tree.dataset,
+                        geo_exterior,
+                        invert=not invert,
+                        **mask_kws,
+                    ),
+                    name="_exterior",
+                )
+            )
+
+    def split_from_groupby(self, **groupby_kwargs):
+        self.child_nodes = self._nodes_from_dsgroupby(
+            self.tree.dataset.groupby(**groupby_kwargs)
         )
 
-    # Maybe return outside
-    if keep_exterior:
-        geo_exterior = odc.geo.geom.unary_union(gdf[odc_geometry_col])
-        invert = mask_kwargs.pop("invert", False)
-        child_nodes.append(
-            xr.DataTree(
-                dataset=mask_dataset(
-                    node.dataset,
-                    geo_exterior,
-                    invert=not invert,
-                    dropna=dropna,
-                    **mask_kwargs,
-                ),
-                name="_exterior",
-            )
+    def split_from_groupby_bins(self, **groupby_bins_kwargs):
+        self.child_nodes = self._nodes_from_dsgroupby(
+            self.tree.dataset.groupby_bins(**groupby_bins_kwargs)
         )
 
-    # Create new tree
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.DataTree(
-                dataset=node.dataset if not prune_node else None, name=node.name
+    @staticmethod
+    def _nodes_from_dsgroupby(groupby) -> list[xr.DataTree]:
+        return [xr.DataTree(ds, name=str(label)) for label, ds in groupby]
+
+    def result(self, inplace: bool, prune_node: bool) -> xr.DataTree | None:
+        if not inplace:
+            return xr.DataTree.from_dict(
+                {
+                    "/": xr.DataTree(
+                        dataset=self.tree.dataset if not prune_node else None,
+                        name=self.tree.name,
+                    )
+                }
+                | {f"/{child.name}": child for child in self.child_nodes}
             )
-        }
-        | {f"/{child.name}": child for child in child_nodes}
-    )
+
+        if prune_node:
+            self.tree.ds = None
+        self.tree.children = {child.name: child for child in self.child_nodes}
 
 
 # TODO: Option: Use closest dsets (need not be hollow)
@@ -234,8 +272,14 @@ def merge_tree_dset(
         root.children = {}
     root.update(
         xr.merge(
-            [node.dataset for node in leaf_nodes], join="outer", compat="no_conflicts"
+            [node.dataset for node in leaf_nodes],
+            join="outer",
+            compat="no_conflicts",  # Very slow :(
+            # compat="override",  # Error-prone, but MUCH faster!
         )
+        # xr.concat(
+        #     [node.dataset for node in leaf_nodes], dim="_concat", join="outer"
+        # ).sum(dim="_concat", skipna=True, min_count=1)
     )
     return root
 
@@ -308,7 +352,7 @@ class TreeMapper:
         if path in self._func_map:
             return self._func_map[path]
         # Name (last path component)
-        if node.name in self._func_map:
+        if node.name is not None and node.name in self._func_map:
             return self._func_map[node.name]
         # Any parent path (but not reverting to default here!)
         if use_parent and not node.is_root:
