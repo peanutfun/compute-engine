@@ -1,14 +1,13 @@
 """Operations on trees"""
 
-from typing import Any, Callable, Hashable, Mapping, overload
+from typing import Any, Callable, Hashable, Mapping
 
 import geopandas as gpd
+import numpy as np
 import odc.geo.converters
 import odc.geo.geom
 import odc.geo.xr  # noqa: F401
 import xarray as xr
-import numpy as np
-from shapely.geometry import Polygon
 
 from .impact_funcs import (
     REGISTRY,

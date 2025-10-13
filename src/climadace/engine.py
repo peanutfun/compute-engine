@@ -1,11 +1,11 @@
 """Compute Engine"""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Callable, Hashable, Sequence, overload
-from collections.abc import Mapping
 
 import pandas as pd
 import xarray as xr
@@ -14,10 +14,9 @@ from . import funcs
 from .impact_funcs import ImpactFunctionMap
 from .io import maybe_cache_zarr
 from .tree import (
-    map_impact_function,
     map_aggregate_function,
+    map_impact_function,
     map_over_datasets,
-    split_from_geo,
     tree_is_empty,
 )
 from .types import AnyXarray, CachePolicy, DatasetFunction, DatasetOrArray

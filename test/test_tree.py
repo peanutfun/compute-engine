@@ -1,7 +1,7 @@
 """Test functions for tree operations"""
 
-from unittest.mock import patch
 from itertools import product
+from unittest.mock import patch
 
 import geopandas as gpd
 import numpy as np
