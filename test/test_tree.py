@@ -1,6 +1,6 @@
 """Test functions for tree operations"""
 
-from itertools import product
+import itertools as it
 from unittest.mock import patch
 
 import geopandas as gpd
@@ -29,6 +29,7 @@ from climadace.tree import (
     map_over_datasets,
     merge_tree_dset,
     split_from_geo,
+    merge_by_combine,
 )
 
 
@@ -134,7 +135,7 @@ class TestTreeSplitter:
         return splitter
 
     @pytest.mark.parametrize(
-        "inplace,prune_node", list(product((True, False), repeat=2))
+        "inplace,prune_node", list(it.product((True, False), repeat=2))
     )
     def test_result(self, splitter_with_child_nodes, dataset, inplace, prune_node):
         result = splitter_with_child_nodes.result(
@@ -303,54 +304,102 @@ def test_map_aggregate_function(dataset, impf_map):
     )
 
 
-def test_merge_tree_dset(dataset):
-    dt = xr.DataTree.from_dict(
-        {
-            "/a": dataset.sel(x=slice(0, 1)),
-            "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
-            "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
-        }
-    )
-    merged = merge_tree_dset(dt)
-    assert merged is not dt
-    xrt.assert_identical(merged.to_dataset(), dataset)
+@pytest.mark.parametrize("order", it.permutations(range(3)))
+def test_merge_by_combine(dataset, order):
+    # Datasets overlap, but there is only one non-NaN value at each coordinate.
+    # Permutate to make sure the result is independent from dataset order.
+    ds_1 = dataset.copy(deep=True).sel(x=slice(0, 1))
+    ds_1["var"].loc[{"x": [1, 1], "y": [1, 2, 3]}] = np.nan
+    ds_2 = dataset.copy(deep=True).sel(x=slice(1, 1))
+    ds_2["var"].loc[{"y": [0, 3]}] = np.nan
+    ds_3 = dataset.copy(deep=True).sel(x=slice(1, 2))
+    ds_3["var"].loc[{"x": [1, 1], "y": [0, 1, 2]}] = np.nan
+
+    ds = [ds_1, ds_2, ds_3]
+    ds = merge_by_combine(*(ds[idx] for idx in order))
+    xr.testing.assert_identical(ds, dataset)
 
 
-def test_merge_tree_dset_overlap(dataset):
-    ds_a = dataset.copy(deep=True).sel(x=slice(0, 1))
-    ds_a["var"].loc[{"x": 1, "y": 0}] = np.nan  # NOTE: Overlap with NaN is OK!
-    dt = xr.DataTree.from_dict(
-        {
-            "/a": ds_a,
-            "/b/1": dataset.sel(x=slice(1, 3), y=slice(0, 1)),
-            "/b/2": dataset.sel(x=slice(1, 3), y=slice(2, 4)),
-        }
-    )
-    merged = merge_tree_dset(dt)
-    assert merged is not dt
-    xrt.assert_identical(merged.to_dataset(), dataset)
-
-
-def test_merge_tree_dset_errors(dataset):
-    # Check for hollow tree
-    with pytest.raises(ValueError, match="Tree must be hollow") as exc:
-        merge_tree_dset(
-            xr.DataTree.from_dict({"/a": dataset, "/a/1": dataset, "/a/2": dataset})
-        )
-        assert "Tree must be hollow" in str(exc.value)
-
-    # Check for overwrite
-    with pytest.raises(ValueError, match="Merging would overwrite"):
-        merge_tree_dset(
-            xr.DataTree.from_dict({"/": dataset, "/1": dataset, "/2": dataset}),
-            overwrite=False,
+class TestTreeMerge:
+    @pytest.fixture
+    def datatree(self, dataset):
+        return xr.DataTree.from_dict(
+            {
+                "/a": dataset.sel(x=slice(0, 1)),
+                "/b/1": dataset.sel(x=slice(2, 3), y=slice(0, 1)),
+                "/b/2": dataset.sel(x=slice(2, 3), y=slice(2, 4)),
+            }
         )
 
-    # Check for quick return
-    dt = xr.DataTree.from_dict({"/": dataset})
-    with patch("xarray.DataTree.update") as update:
-        merge_tree_dset(dt)
-        update.assert_not_called()
+    @pytest.mark.parametrize("inplace", (True, False))
+    def test_merge_default(self, dataset, datatree, inplace):
+        merged = merge_tree_dset(datatree, inplace=inplace)
+        if inplace:
+            assert merged is None
+            merged = datatree
+        else:
+            assert merged is not datatree
+        xrt.assert_identical(merged.to_dataset(), dataset)
+
+    def test_merge_drop_subtree(self, dataset, datatree):
+        # Dropping should mean no children
+        merged = merge_tree_dset(datatree, drop_subtree=True)
+        assert merged.children == {}
+
+        # Alignment error
+        with pytest.raises(ValueError) as err:
+            merged = merge_tree_dset(datatree, drop_subtree=False)
+        assert "Use 'drop-subtree=True'" in str(err)
+
+        # No alignment error
+        dt = xr.DataTree.from_dict({
+            "/a": dataset.where(dataset["x"] < 1), "/b": dataset
+        })
+        merged = merge_tree_dset(dt, drop_subtree=False)
+        dt.ds = dataset
+        xr.testing.assert_identical(merged, dt)
+
+    @pytest.mark.parametrize("inplace", (True, False))
+    def test_merge_leaf(self, dataset, inplace):
+        dt = xr.DataTree(dataset, name="foo")
+        merged = merge_tree_dset(dt, inplace=inplace)
+
+        xr.testing.assert_identical(merged, dt)
+        if inplace:
+            assert merged is dt
+        else:
+            assert merged is not dt
+
+    def test_merge_tree_dset_overlap(self, dataset):
+        ds_a = dataset.copy(deep=True).sel(x=slice(0, 1))
+        ds_a["var"].loc[{"x": 1, "y": 0}] = np.nan  # NOTE: Overlap with NaN is OK!
+        ds_b2 = dataset.copy(deep=True).sel(x=slice(1, 3), y=slice(1, 4))
+        ds_b2["var"].loc[{"x": 2, "y": 1}] = np.nan  # NOTE: Overlap with NaN is OK!
+        dt = xr.DataTree.from_dict(
+            {
+                "/a": ds_a,
+                "/b/1": dataset.sel(x=slice(1, 3), y=slice(0, 1)),
+                "/b/2": ds_b2,
+            }
+        )
+        merged = merge_tree_dset(dt)
+        assert merged is not dt
+        xrt.assert_identical(merged.to_dataset(), dataset)
+
+    def test_merge_tree_dset_errors(self, dataset):
+        # Check for hollow tree
+        with pytest.raises(ValueError, match="Tree must be hollow") as exc:
+            merge_tree_dset(
+                xr.DataTree.from_dict({"/a": dataset, "/a/1": dataset, "/a/2": dataset})
+            )
+            assert "Tree must be hollow" in str(exc.value)
+
+        # Check for overwrite
+        with pytest.raises(ValueError, match="Merging would overwrite"):
+            merge_tree_dset(
+                xr.DataTree.from_dict({"/": dataset, "/1": dataset, "/2": dataset}),
+                overwrite=False,
+            )
 
 
 @pytest.fixture
@@ -411,9 +460,9 @@ class TestSplitFromGeo:
 
         return assertion
 
-    @pytest.mark.parametrize("groupby", ["", "cat"])
-    def test_split(self, groupby, geo_dataset, geo_dataframe, assert_split_1_2):
-        dt = split_from_geo(geo_dataset, geo_dataframe, groupby=groupby)
+    @pytest.mark.parametrize("groupby_kws", [None, {"by": "cat"}])
+    def test_split(self, groupby_kws, geo_dataset, geo_dataframe, assert_split_1_2):
+        dt = split_from_geo(geo_dataset, geo_dataframe, groupby_kws=groupby_kws)
         assert isinstance(dt, xr.DataTree)
         assert dt.is_hollow
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted([".", "1", "2"])
@@ -425,10 +474,10 @@ class TestSplitFromGeo:
         gdf["col"] = "foo"
         with pytest.raises(ValueError) as exc:
             split_from_geo(geo_dataset, gdf)
-            assert "must have exactly one column" in str(exc.value)
+        assert "GeoDataFrame must have exactly one other column" in str(exc)
 
     def test_prune_node(self, geo_dataset, geo_dataframe, assert_split_1_2):
-        dt = split_from_geo(geo_dataset, geo_dataframe, groupby="cat", prune_node=False)
+        dt = split_from_geo(geo_dataset, geo_dataframe, prune_node=False)
         assert not dt.is_hollow
         xrt.assert_identical(dt.to_dataset(), geo_dataset)
         assert_split_1_2(dt, geo_dataframe)
@@ -437,7 +486,7 @@ class TestSplitFromGeo:
         self, geo_dataset, geo_dataframe, geo_series, assert_split_1_2
     ):
         dt = split_from_geo(
-            geo_dataset, geo_dataframe, groupby="cat", keep_exterior=True
+            geo_dataset, geo_dataframe, keep_exterior=True
         )
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
             [".", "_exterior", "1", "2"]
@@ -450,12 +499,14 @@ class TestSplitFromGeo:
 
     def test_return_unchanged(self, geo_dataset):
         dt = split_from_geo(geo_dataset, gpd.GeoDataFrame())
+        xrt.assert_identical(dt, xr.DataTree())
+        dt = split_from_geo(geo_dataset, gpd.GeoDataFrame(), prune_node=False)
         xrt.assert_identical(dt, xr.DataTree(geo_dataset))
 
     def test_pass_groupby_kwargs(self, geo_dataset, geo_dataframe, geo_series):
         geo_dataframe.loc[4, "cat"] = np.nan
         dt = split_from_geo(
-            geo_dataset, geo_dataframe, groupby={"by": "cat", "dropna": False}
+            geo_dataset, geo_dataframe, groupby_kws={"by": "cat", "dropna": False}
         )
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
             [".", "1.0", "2.0", "nan"]

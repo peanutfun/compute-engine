@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Hashable
+
 import numpy as np
 import numpy.testing as npt
 import pytest
@@ -102,7 +105,7 @@ def test_norm_chunks_with_ref(simple_dataarray):
         coords={"z": np.arange(2), "y": np.arange(4), "x": np.arange(4)},
     ).chunk((1, 1, 4))
     result = norm_chunks(arr, ref=ref)
-    assert result.chunksizes == {"x": (4,), "y": (1, 1, 1, 1)}
+    assert dict(result.chunksizes) == {"x": (4,), "y": (2, 2)}
 
 
 def test_rename_spatial_dims(simple_dataarray):

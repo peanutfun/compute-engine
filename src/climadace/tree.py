@@ -1,6 +1,6 @@
 """Operations on trees"""
 
-from typing import Any, Callable, Hashable, Mapping
+from typing import Any, Callable, Hashable, Mapping, overload, Literal, Iterable
 
 import geopandas as gpd
 import numpy as np
@@ -146,22 +146,15 @@ class TreeSplitter:
         mask_kws = {"all_touched": False} | (
             dict(mask_kws) if mask_kws is not None else {}
         )
-        print(mask_kws)
-
-        # Geospatial data of the dataset
-        geobox = self.tree.to_dataset().odc.geobox
-        ds_extent = geobox.extent
-        crs = geobox.crs
-        resolution = np.min(np.abs(geobox.resolution.xy))
 
         if not high_precision:
-            gdf = gdf.to_crs(crs)
+            gdf = gdf.to_crs(self.tree.to_dataset().odc.geobox.crs)
 
         # Infer groupby kwargs
         if groupby_kws is None:
             if len(gdf.columns) > 2:
                 raise ValueError(
-                    "GeoDataFrame must have exactly one other column than the geomtry "
+                    "GeoDataFrame must have exactly one other column than the geometry "
                     "column to infer groupby key"
                 )
             groupby_kws = {"by": gdf.drop(columns=gdf.active_geometry_name).columns[0]}
@@ -172,42 +165,51 @@ class TreeSplitter:
 
         # Interate over groups
         for group, data in gdf.groupby(**groupby_kws):
-            # Merge group geometries
-            geo_interior = odc.geo.geom.unary_union(data[odc_geometry_col])
-            assert geo_interior is not None
-            if high_precision:
-                geo_interior = geo_interior.to_crs(crs, resolution=resolution)
-            if not odc.geo.geom.intersects(geo_interior, ds_extent):
-                continue
-
-            self.child_nodes.append(
-                xr.DataTree(
-                    dataset=mask_dataset(self.tree.dataset, geo_interior, **mask_kws),
-                    name=str(group),
-                )
+            self._append_child_node_from_gdf(
+                name=str(group),
+                gdf=data[odc_geometry_col],
+                high_precision=high_precision,
+                mask_kws=mask_kws,
             )
 
         # Maybe return outside
         if keep_exterior:
-            geo_exterior = odc.geo.geom.unary_union(gdf[odc_geometry_col])
-            assert geo_exterior is not None
-            if high_precision:
-                geo_exterior = geo_exterior.to_crs(crs, resolution=resolution)
-            if not odc.geo.geom.intersects(geo_exterior, ds_extent):
-                return
-
-            invert = mask_kws.pop("invert", False)
-            self.child_nodes.append(
-                xr.DataTree(
-                    dataset=mask_dataset(
-                        self.tree.dataset,
-                        geo_exterior,
-                        invert=not invert,
-                        **mask_kws,
-                    ),
-                    name="_exterior",
-                )
+            mask_kws["invert"] = not mask_kws.get("invert", False)
+            self._append_child_node_from_gdf(
+                name="_exterior",
+                gdf=gdf[odc_geometry_col],
+                high_precision=high_precision,
+                mask_kws=mask_kws,
             )
+
+    def _append_child_node_from_gdf(
+        self,
+        name: str,
+        gdf: Iterable[odc.geo.geom.Geometry],
+        high_precision: bool,
+        mask_kws: Mapping[str, Any],
+    ):
+        # Unify geometries
+        geo = odc.geo.geom.unary_union(gdf)
+        assert geo is not None
+
+        # Maybe convert CRS
+        geobox = self.tree.to_dataset().odc.geobox
+        if high_precision:
+            geo = geo.to_crs(
+                geobox.crs, resolution=np.min(np.abs(geobox.resolution.xy))
+            )
+
+        # Assert there is an intersection
+        if not odc.geo.geom.intersects(geo, geobox.extent):
+            return
+
+        # Insert child
+        self.child_nodes.append(
+            xr.DataTree(
+                dataset=mask_dataset(self.tree.dataset, geo, **mask_kws), name=name
+            )
+        )
 
     def split_from_groupby(self, **groupby_kwargs):
         self.child_nodes = self._nodes_from_dsgroupby(
@@ -240,23 +242,62 @@ class TreeSplitter:
         self.tree.children = {child.name: child for child in self.child_nodes}
 
 
+def merge_by_combine(dset: xr.Dataset, *dsets: xr.Dataset) -> xr.Dataset:
+    """Combine all datasets to a new one. Assume that there are only NaN overlaps"""
+    if not dsets:
+        return dset
+    for ds_right in dsets:
+        dset = dset.combine_first(ds_right)
+    return dset
+
+
+@overload
+def merge_tree_dset(
+    root: xr.DataTree,
+    drop_subtree: bool = ...,
+    overwrite: bool = ...,
+    inplace: Literal[False] = False,
+) -> xr.DataTree: ...
+
+
+@overload
+def merge_tree_dset(
+    root: xr.DataTree,
+    *,
+    inplace: Literal[True],
+) -> None: ...
+
+
+@overload
+def merge_tree_dset(
+    root: xr.DataTree,
+    drop_subtree: bool,
+    overwrite: bool,
+    inplace: bool,
+) -> xr.DataTree | None: ...
+
+
 # TODO: Option: Use closest dsets (need not be hollow)
 def merge_tree_dset(
-    root: xr.DataTree, drop_subtree: bool = True, overwrite: bool = False
-) -> xr.DataTree:
+    root: xr.DataTree,
+    drop_subtree: bool = True,
+    overwrite: bool = False,
+    inplace: bool = False,
+) -> xr.DataTree | None:
     """Merge the tree leaf datasets into the root node
 
     Todo
     ----
     Maybe we can just call combine_by_coords on all leaves?
     """
+    if not inplace:
+        root = root.copy()  # Shallow copy
     if root.is_leaf:
         return root
     if root.has_data and not overwrite:
         raise ValueError("Merging would overwrite existing root dataset!")
     if not root.is_hollow:
         raise ValueError("Tree must be hollow for merging!")
-    root = root.copy()  # Shallow copy
 
     # Collect nodes that do not have children, iteratively
     leaf_nodes = []
@@ -269,18 +310,28 @@ def merge_tree_dset(
     # Merge the leaf datasets and possibly drop them
     if drop_subtree:
         root.children = {}
-    root.update(
-        xr.merge(
-            [node.dataset for node in leaf_nodes],
-            join="outer",
-            compat="no_conflicts",  # Very slow :(
-            # compat="override",  # Error-prone, but MUCH faster!
+    try:
+        root.update(
+            merge_by_combine(*(node.dataset for node in leaf_nodes))
+            # xr.merge(
+            #     [node.dataset for node in leaf_nodes],
+            #     join="outer",
+            #     compat="no_conflicts",  # Very slow :(
+            #     # compat="override",  # Error-prone, but MUCH faster!
+            # )
+            # xr.concat(
+            #     [node.dataset for node in leaf_nodes], dim="_concat", join="outer"
+            # ).sum(dim="_concat", skipna=True, min_count=1)
         )
-        # xr.concat(
-        #     [node.dataset for node in leaf_nodes], dim="_concat", join="outer"
-        # ).sum(dim="_concat", skipna=True, min_count=1)
-    )
-    return root
+    except ValueError as err:
+        if "not aligned with its parents" in str(err):
+            raise ValueError(
+                "Children are not aligned with merged parent. Use 'drop-subtree=True'"
+            ) from err
+        raise err
+
+    if not inplace:
+        return root
 
 
 def map_impact_function(
