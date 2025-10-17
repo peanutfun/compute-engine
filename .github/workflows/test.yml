@@ -1,0 +1,36 @@
+name: GitHub CI
+
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools
+          pip install ".[dev]"
+      -
+        name: Test with pytest
+        run: pytest test/ --junitxml=junit/test-results.xml
+      -
+        name: Upload pytest test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: junit/test-results.xml
+        if: ${{ always() }}
+
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/ruff-action@v3
+      - run: ruff check --output-format=github
+      - run: ruff format --check

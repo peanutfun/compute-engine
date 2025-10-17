@@ -1,12 +1,11 @@
 """Sparse operations"""
 
-from typing import Hashable, Callable, Mapping
-from functools import partial
+from typing import Callable, Hashable, Mapping
 
+import numpy as np
 import sparse
 import xarray as xr
-import numpy as np
-from numpy.typing import DTypeLike, ArrayLike
+from numpy.typing import ArrayLike, DTypeLike
 
 from .tree import map_over_datasets
 
@@ -18,7 +17,7 @@ def zero_to_nan(array: ArrayLike, exact: bool = False) -> np.ndarray:
     # Exact or inexact comparison
     compare_op = np.equal
     if not exact:
-        compare_op = np.allclose
+        compare_op = np.isclose
 
     # Compare
     array = np.where(compare_op(array, 0), np.nan, array)
@@ -38,10 +37,10 @@ class SparseArray(sparse.GCXS):
 
 def to_sparse(
     data: xr.DataArray,
-    array_type: type[AnySparseArray] = sparse.GCXS,
+    array_type: type[AnySparseArray] = SparseArray,
     dtype: DTypeLike | None = None,
-    preprocess: Callable[[ArrayLike], ArrayLike] = lambda x: x,
-    fill_value=None,
+    preprocess: Callable[[ArrayLike], ArrayLike] = zero_to_nan,
+    fill_value=np.nan,
 ) -> xr.DataArray:
     """Make sparse"""
     if dtype is None:
@@ -161,8 +160,7 @@ class SparseTreeAccessor:
     def to_sparse(self, override: bool = False, **to_sparse_kwargs) -> xr.DataTree:
         """Sparsify the object"""
         return map_over_datasets(
-            lambda ds: ds.sp.to_sparse(override=override, **to_sparse_kwargs),
-            self._obj
+            lambda ds: ds.sp.to_sparse(override=override, **to_sparse_kwargs), self._obj
         )
 
     def to_dense(self) -> xr.DataTree:

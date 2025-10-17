@@ -1,13 +1,11 @@
 """Operations on trees"""
 
-from typing import Mapping, Any
-
-from anytree import Node, LevelOrderIter
-import xarray as xr
-import odc.geo.converters
-import odc.geo.xr
-from odc.geo.geom import Geometry
 import geopandas as gpd
+import odc.geo.converters
+import odc.geo.xr  # noqa: F401
+import xarray as xr
+from anytree import LevelOrderIter, Node
+from odc.geo.geom import Geometry
 
 from .funcs import DatasetOrArray
 
@@ -56,8 +54,10 @@ def split_dataset(
 
     return data_masked
 
+
 def split_from_geometry():
     pass
+
 
 def split_from_gdf(
     node: xr.Dataset | DatasetNode,

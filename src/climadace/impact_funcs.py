@@ -1,23 +1,22 @@
 """Impact Functions"""
 
-from functools import partial
-from pathlib import PurePath
-from typing import Mapping, Hashable, Dict, Final, Callable, Type, Any
-from dataclasses import dataclass
-from enum import StrEnum, auto
-from collections import UserDict
-from abc import ABC, abstractmethod, ABCMeta
+from abc import ABC, ABCMeta, abstractmethod
 from collections.abc import MutableMapping
+from enum import StrEnum, auto
+from functools import partial
+from typing import Any, Callable, Final
 
 import numpy as np
 import numpy.typing as npt
+import xarray as xr
+
+from .types import DatasetOrArray
 
 
 # # TODO: Should it store a name? -> NO: Names only for registered impact functions!
 class ImpactFunctionBase(ABC):
-
     @abstractmethod
-    def __call__(self, x: npt.ArrayLike) -> npt.ArrayLike:
+    def __call__(self, x: DatasetOrArray) -> DatasetOrArray:
         """Return the value of the impact function for a given hazard intensity"""
         ...
 
@@ -31,22 +30,26 @@ class ImpactFunctionBase(ABC):
 #     def __call__(self, x: npt.ArrayLike) -> npt.ArrayLike:
 #         return self.func(x)
 
-ImpactFunction = Callable[[npt.ArrayLike], npt.ArrayLike]
-
+ImpactFunction = Callable[[DatasetOrArray], DatasetOrArray]
 
 
 class InterpolatedImpactFunction(ImpactFunctionBase):
-
     def __init__(self, xp: npt.ArrayLike, fp: npt.ArrayLike):
         super().__init__()
         self.xp = xp
         self.fp = fp
 
-    def __call__(self, x: npt.ArrayLike) -> npt.ArrayLike:
-        return np.interp(x, self.xp, self.fp)
+    def __call__(self, x: DatasetOrArray) -> DatasetOrArray:
+        return xr.apply_ufunc(
+            lambda arr: np.interp(arr, self.xp, self.fp),
+            x,
+            dask="parallelized",
+        )
 
     @classmethod
-    def from_func(cls, xp: npt.ArrayLike, impf: ImpactFunction):
+    def from_func(
+        cls, xp: npt.ArrayLike, impf: Callable[[npt.ArrayLike], npt.ArrayLike]
+    ):
         """Create from an impact function and intensity values to interpolate at"""
         xp = np.asanyarray(xp)
         return cls(xp=xp, fp=impf(xp))
@@ -63,7 +66,6 @@ class ABCSingleton(ABCMeta):
 
 
 class ImpactFunctionRegistry(MutableMapping, metaclass=ABCSingleton):
-
     def __init__(self):
         self.map = {}
         self.allow_overwrite = False

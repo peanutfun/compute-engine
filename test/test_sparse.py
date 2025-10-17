@@ -1,13 +1,13 @@
 """Test functions for sparse operations"""
 
+import numpy as np
 import pytest
 import xarray as xr
-import numpy as np
-from hypothesis import strategies as st, given, settings, Verbosity
+from hypothesis import given
+from hypothesis import strategies as st
 from hypothesis.extra.numpy import array_shapes, arrays
-from sparse import GCXS
 
-import climadace.sparse
+from climadace.sparse import SparseArray, zero_to_nan
 
 
 @st.composite
@@ -44,25 +44,30 @@ def test_accessor(arr):
     assert arr.sp.array is None
 
 
-# -0 is a problem, apparently
-# Update: -0 counts as zero accoring to numpy, but not according to sparse
-@given(
-    # array(elements={"min_value": 0, "max_value": 0}),  # Zeros or NaNs
-    array(),
-)
-# @settings(max_examples=10, deadline=None)
-def test_sparsify(arr):
-    """Test sparsification"""
-    # arr_sp = arr.sp.to_sparse(preprocess=lambda x: np.where(np.isclose(x, 0), 0, x))
+def test_sparse():
+    arr = xr.DataArray([np.nan], coords={"x": [0]})
     arr_sp = arr.sp.to_sparse()
     assert not arr.sp.is_sparse
     assert arr_sp.sp.is_sparse
-    assert isinstance(arr_sp.sp.array, GCXS)
+    assert isinstance(arr_sp.sp.array, SparseArray)
+    print(arr_sp.sp.array)
 
-    arr_np = arr.to_numpy()
-    # nnz = np.count_nonzero(np.where(np.isclose(arr_np, 0), 0, arr_np))
-    nnz = np.count_nonzero(arr_np)
-    density = nnz / arr_np.size
+    nnz = np.count_nonzero(~np.isnan(zero_to_nan(arr)))
+    density = nnz / arr.size
+    assert arr_sp.sp.array.density == density
+
+
+@given(array())
+def test_sparsify(arr):
+    """Test sparsification"""
+    arr_sp = arr.sp.to_sparse()
+    assert not arr.sp.is_sparse
+    assert arr_sp.sp.is_sparse
+    assert isinstance(arr_sp.sp.array, SparseArray)
+    print(arr_sp.sp.array)
+
+    nnz = np.count_nonzero(~np.isnan(zero_to_nan(arr)))
+    density = nnz / arr.size
     assert arr_sp.sp.array.density == density
 
     # Densify

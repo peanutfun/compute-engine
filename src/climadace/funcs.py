@@ -1,14 +1,15 @@
 """Functions"""
 
 from pathlib import Path
-from datetime import datetime
-from typing import Callable, Mapping, Hashable, TypeVar, Sequence
+from typing import Callable, Hashable, Mapping, TypeVar
 
-import xarray as xr
-import odc.geo.xr
 import numpy as np
+import odc.geo.xr  # noqa: F401
+import rioxarray  # noqa: F401
+import xarray as xr
+from dask.array import Array as DaskArray
 
-from .types import DatasetOrArray, AnyXarray
+from .types import AnyXarray, DatasetOrArray
 
 # from . import sparse
 
@@ -40,13 +41,23 @@ def unify_chunks(arr: AnyXarray) -> AnyXarray:
 
 def is_chunked(arr: AnyXarray) -> bool:
     """Check if xarray object is chunked"""
-    arr = unify_chunks(arr)
-    if isinstance(arr, xr.DataTree):
-        if any((node.ds.chunks for node in arr.subtree if node.has_data)):
-            return True
-        return False
+    if isinstance(arr, xr.DataArray):
+        return isinstance(arr.data, DaskArray)
 
-    return arr.chunks is not None
+    if isinstance(arr, xr.Dataset):
+        return any((is_chunked(da) for da in arr.data_vars.values()))
+
+    if isinstance(arr, xr.DataTree):
+        return any((is_chunked(node.to_dataset()) for node in arr.subtree))
+
+    return False
+    # arr = unify_chunks(arr)
+    # if isinstance(arr, xr.DataTree):
+    #     if any((node.ds.chunks for node in arr.subtree if node.has_data)):
+    #         return True
+    #     return False
+
+    # return arr.chunks is not None
 
 
 def normed_chunksize(
@@ -85,7 +96,14 @@ def norm_chunks(arr: AnyXarray, ref: AnyXarray | None = None) -> AnyXarray:
                 )
             )
 
-        chunks = {dim: "auto" for dim in arr_chunksizes.keys()} | ref_chunks
+        # Assemble new chunks
+        chunks = {}
+        for dim in arr_chunksizes:
+            if dim in ref_chunks:
+                # Do not make chunks smaller than before
+                chunks[dim] = np.nanmax((arr_chunksizes[dim], ref_chunks[dim]))
+            else:
+                chunks[dim] = "auto"
 
     return unify_chunks(arr.chunk(chunks))
 

@@ -1,37 +1,55 @@
 """Operations on trees"""
 
-from typing import Mapping, Any, TypeAlias, Callable, Hashable
-from pathlib import PurePath
+from typing import Any, Callable, Hashable, Iterable, Literal, Mapping, overload
 
-import pandas as pd
-import xarray as xr
-import odc.geo.xr
-import odc.geo.converters
-
-# from odc.geo.geom import Geometry, intersects
-import odc.geo.geom
-from odc.geo.geobox import GeoBox
 import geopandas as gpd
+import numpy as np
+import odc.geo.converters
+import odc.geo.geom
+import odc.geo.xr  # noqa: F401
+import xarray as xr
 
-from .types import DatasetOrArray, DatasetFunction
 from .impact_funcs import (
-    ImpactFunctionMap,
-    FuncDefault,
-    FuncLeaf,
+    REGISTRY,
     FunctionMap,
     FuncType,
-    REGISTRY,
 )
+from .types import DatasetFunction, DatasetOrArray
 
 
-def map_over_datasets(func, *args, kwargs=None, filterfunc=lambda x: x.has_data):
-    def filter_tree(obj):
-        if isinstance(obj, xr.DataTree):
-            return obj.filter(filterfunc)
-        return obj
+def filter_dsets(
+    dset: xr.Dataset,
+    *dsets: xr.Dataset,
+    filterfunc: Callable[[xr.Dataset], bool],
+) -> xr.Dataset | None | tuple[xr.Dataset | None, ...]:
+    """Return datasets or None if filterfunc returns False"""
 
-    args = tuple(filter_tree(obj=arg) for arg in args)
-    return xr.map_over_datasets(func, *args, kwargs)
+    def ds_or_none(ds: xr.Dataset) -> xr.Dataset | None:
+        if not filterfunc(ds):
+            return None
+        return ds
+
+    if not dsets:
+        return ds_or_none(dset)
+
+    return tuple(ds_or_none(ds) for ds in (dset,) + dsets)
+
+
+def map_over_datasets(
+    func,
+    *args,
+    kwargs: Mapping[str, Any] | None = None,
+    filterfunc: Callable[[xr.Dataset], bool] = lambda x: bool(x.data_vars),
+):
+    """map_over_datasets but omit results for which filterfunc is False"""
+
+    def wrapper(*args, **kwargs):
+        results = func(*args, **kwargs)
+        if not isinstance(results, tuple):
+            results = (results,)
+        return filter_dsets(*results, filterfunc=filterfunc)
+
+    return xr.map_over_datasets(wrapper, *args, kwargs=kwargs)
 
 
 def tree_is_empty(node: xr.DataTree) -> bool:
@@ -61,146 +79,226 @@ def mask_dataset(
 
 
 def split_from_groupby_bins(
-    node: xr.Dataset | xr.DataTree, prune_node: bool = True, **groupby_bins_kwargs
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = True,
+    inplace: bool = False,
+    **groupby_bins_kwargs,
 ):
-    if not isinstance(node, xr.DataTree):
-        node = xr.DataTree(dataset=node)
-    child_nodes = _nodes_from_dsgroupby(
-        node.dataset.groupby_bins(**groupby_bins_kwargs)
-    )
-
-    # Create new tree
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.DataTree(
-                dataset=node.dataset if not prune_node else None, name=node.name
-            )
-        }
-        | {f"/{child.name}": child for child in child_nodes}
-    )
+    splitter = TreeSplitter(tree=node)
+    splitter.split_from_groupby_bins(**groupby_bins_kwargs)
+    return splitter.result(inplace=inplace, prune_node=prune_node)
 
 
 def split_from_groupby(
-    node: xr.Dataset | xr.DataTree, prune_node: bool = True, **groupby_kwargs
-) -> xr.DataTree:
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = True,
+    inplace: bool = False,
+    **groupby_kwargs,
+) -> xr.DataTree | None:
     """Split using groupby"""
-    if not isinstance(node, xr.DataTree):
-        node = xr.DataTree(dataset=node)
-    child_nodes = _nodes_from_dsgroupby(node.dataset.groupby(**groupby_kwargs))
-
-    # Create new tree
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.DataTree(
-                dataset=node.dataset if not prune_node else None, name=node.name
-            )
-        }
-        | {f"/{child.name}": child for child in child_nodes}
-    )
+    splitter = TreeSplitter(tree=node)
+    splitter.split_from_groupby(**groupby_kwargs)
+    return splitter.result(inplace=inplace, prune_node=prune_node)
 
 
-def _nodes_from_dsgroupby(groupby) -> list[xr.DataTree]:
-    return [xr.DataTree(ds, name=group) for ds, group in groupby]
-
-
+# TODO: Low resolution mode (convert CRS of gdf, not geometry)
 def split_from_geo(
     node: xr.Dataset | xr.DataTree,
     gdf: gpd.GeoDataFrame,
     *,
-    groupby: str | Mapping[str, Any] = "",
+    high_precision: bool = False,
     keep_exterior: bool = False,
     prune_node: bool = True,
-    dropna: bool = False,
-    **mask_kwargs,
-) -> xr.DataTree:
+    inplace: bool = False,
+    groupby_kws: Mapping | None = None,
+    mask_kws: Mapping | None = None,
+) -> xr.DataTree | None:
     """Split a dataset into subsets and return them as tree leaves"""
-    if not isinstance(node, xr.DataTree):
-        node = xr.DataTree(dataset=node)
-    if gdf.empty:
-        return node
-    gdf = gdf.copy(deep=False)
+    splitter = TreeSplitter(tree=node)
+    splitter.split_from_dataframe(
+        gdf=gdf,
+        keep_exterior=keep_exterior,
+        high_precision=high_precision,
+        groupby_kws=groupby_kws,
+        mask_kws=mask_kws,
+    )
+    return splitter.result(inplace=inplace, prune_node=prune_node)
 
-    # Sanitize groupby kwargs
-    groupby_kwargs = {}
-    if isinstance(groupby, str):
-        if groupby == "":
-            if len(gdf.columns) > 2:
+
+class TreeSplitter:
+    def __init__(self, tree: xr.DataTree | xr.Dataset):
+        if not isinstance(tree, xr.DataTree):
+            tree = xr.DataTree(dataset=tree)
+        self.tree = tree
+        self.child_nodes: list[xr.DataTree] = []
+
+    def split_from_dataframe(
+        self,
+        gdf: gpd.GeoDataFrame,
+        keep_exterior: bool,
+        high_precision: bool = False,
+        groupby_kws: Mapping[str, Any] | None = None,
+        mask_kws: Mapping[str, Any] | None = None,
+    ):
+        if gdf.empty:
+            return
+        gdf = gdf.copy(deep=False)
+        mask_kws = {"all_touched": False} | (
+            dict(mask_kws) if mask_kws is not None else {}
+        )
+
+        if not high_precision:
+            gdf = gdf.to_crs(self.tree.to_dataset().odc.geobox.crs)
+
+        # Infer groupby kwargs
+        if groupby_kws is None:
+            non_geo_columns = gdf.drop(columns=gdf.active_geometry_name).columns
+            if len(non_geo_columns) != 1:
                 raise ValueError(
-                    "GeoDataFrame must have exactly one other column than the geomtry "
+                    "GeoDataFrame must have exactly one other column than the geometry "
                     "column to infer groupby key"
                 )
-            groupby = gdf.drop(columns=gdf.active_geometry_name).columns[0]
-        groupby_kwargs["by"] = groupby
-    else:
-        groupby_kwargs = groupby
+            groupby_kws = {"by": non_geo_columns[0]}
 
-    # Convert to odc geometries
-    odc_geometry_col = "_" + (gdf.active_geometry_name or "geometry") + "_odc"
-    gdf[odc_geometry_col] = odc.geo.converters.from_geopandas(gdf.geometry)
+        # Convert to odc geometries
+        odc_geometry_col = "_" + (gdf.active_geometry_name or "geometry") + "_odc"
+        gdf[odc_geometry_col] = odc.geo.converters.from_geopandas(gdf.geometry)
 
-    # Interate over groups
-    child_nodes = []
-    ds_extent = node.to_dataset().odc.geobox.extent
-    for group, data in gdf.groupby(**groupby_kwargs):
-        # Merge geometries
-        geo_interior = odc.geo.geom.unary_union(data[odc_geometry_col])
-        if not odc.geo.geom.intersects(geo_interior, ds_extent):
-            continue
-
-        child_nodes.append(
-            xr.DataTree(
-                dataset=mask_dataset(
-                    node.dataset, geo_interior, dropna=dropna, **mask_kwargs
-                ),
+        # Interate over groups
+        for group, data in gdf.groupby(**groupby_kws):
+            self._append_child_node_from_gdf(
                 name=str(group),
+                gdf=data[odc_geometry_col],
+                high_precision=high_precision,
+                mask_kws=mask_kws,
             )
-        )
 
-    # Maybe return outside
-    if keep_exterior:
-        geo_exterior = odc.geo.geom.unary_union(gdf[odc_geometry_col])
-        invert = mask_kwargs.pop("invert", False)
-        child_nodes.append(
-            xr.DataTree(
-                dataset=mask_dataset(
-                    node.dataset,
-                    geo_exterior,
-                    invert=not invert,
-                    dropna=dropna,
-                    **mask_kwargs,
-                ),
+        # Maybe return outside
+        if keep_exterior:
+            mask_kws["invert"] = not mask_kws.get("invert", False)
+            self._append_child_node_from_gdf(
                 name="_exterior",
+                gdf=gdf[odc_geometry_col],
+                high_precision=high_precision,
+                mask_kws=mask_kws,
+            )
+
+    def _append_child_node_from_gdf(
+        self,
+        name: str,
+        gdf: Iterable[odc.geo.geom.Geometry],
+        high_precision: bool,
+        mask_kws: Mapping[str, Any],
+    ):
+        # Unify geometries
+        geo = odc.geo.geom.unary_union(gdf)
+        assert geo is not None
+
+        # Maybe convert CRS
+        geobox = self.tree.to_dataset().odc.geobox
+        if high_precision:
+            geo = geo.to_crs(
+                geobox.crs, resolution=np.min(np.abs(geobox.resolution.xy))
+            )
+
+        # Assert there is an intersection
+        if not odc.geo.geom.intersects(geo, geobox.extent):
+            return
+
+        # Insert child
+        self.child_nodes.append(
+            xr.DataTree(
+                dataset=mask_dataset(self.tree.dataset, geo, **mask_kws), name=name
             )
         )
 
-    # Create new tree
-    return xr.DataTree.from_dict(
-        {
-            "/": xr.DataTree(
-                dataset=node.dataset if not prune_node else None, name=node.name
+    def split_from_groupby(self, **groupby_kwargs):
+        self.child_nodes = self._nodes_from_dsgroupby(
+            self.tree.dataset.groupby(**groupby_kwargs)
+        )
+
+    def split_from_groupby_bins(self, **groupby_bins_kwargs):
+        self.child_nodes = self._nodes_from_dsgroupby(
+            self.tree.dataset.groupby_bins(**groupby_bins_kwargs)
+        )
+
+    @staticmethod
+    def _nodes_from_dsgroupby(groupby) -> list[xr.DataTree]:
+        return [xr.DataTree(ds, name=str(label)) for label, ds in groupby]
+
+    def result(self, inplace: bool, prune_node: bool) -> xr.DataTree | None:
+        if not inplace:
+            return xr.DataTree.from_dict(
+                {
+                    "/": xr.DataTree(
+                        dataset=self.tree.dataset if not prune_node else None,
+                        name=self.tree.name,
+                    )
+                }
+                | {f"/{child.name}": child for child in self.child_nodes}
             )
-        }
-        | {f"/{child.name}": child for child in child_nodes}
-    )
+
+        if prune_node:
+            self.tree.ds = None
+        self.tree.children = {child.name: child for child in self.child_nodes}
+
+
+def merge_by_combine(dset: xr.Dataset, *dsets: xr.Dataset) -> xr.Dataset:
+    """Combine all datasets to a new one. Assume that there are only NaN overlaps"""
+    if not dsets:
+        return dset
+    for ds_right in dsets:
+        dset = dset.combine_first(ds_right)
+    return dset
+
+
+@overload
+def merge_tree_dset(
+    root: xr.DataTree,
+    drop_subtree: bool = ...,
+    overwrite: bool = ...,
+    inplace: Literal[False] = False,
+) -> xr.DataTree: ...
+
+
+@overload
+def merge_tree_dset(
+    root: xr.DataTree,
+    *,
+    inplace: Literal[True],
+) -> None: ...
+
+
+@overload
+def merge_tree_dset(
+    root: xr.DataTree,
+    drop_subtree: bool,
+    overwrite: bool,
+    inplace: bool,
+) -> xr.DataTree | None: ...
 
 
 # TODO: Option: Use closest dsets (need not be hollow)
 def merge_tree_dset(
-    root: xr.DataTree, drop_subtree: bool = True, overwrite: bool = False
-) -> xr.DataTree:
+    root: xr.DataTree,
+    drop_subtree: bool = True,
+    overwrite: bool = False,
+    inplace: bool = False,
+) -> xr.DataTree | None:
     """Merge the tree leaf datasets into the root node
 
     Todo
     ----
     Maybe we can just call combine_by_coords on all leaves?
     """
+    if not inplace:
+        root = root.copy()  # Shallow copy
     if root.is_leaf:
         return root
     if root.has_data and not overwrite:
         raise ValueError("Merging would overwrite existing root dataset!")
     if not root.is_hollow:
         raise ValueError("Tree must be hollow for merging!")
-    root = root.copy()  # Shallow copy
 
     # Collect nodes that do not have children, iteratively
     leaf_nodes = []
@@ -213,53 +311,10 @@ def merge_tree_dset(
     # Merge the leaf datasets and possibly drop them
     if drop_subtree:
         root.children = {}
-    root.update(xr.merge([node.dataset for node in leaf_nodes]))
-    return root
+    root.update(merge_by_combine(*(node.dataset for node in leaf_nodes)))
 
-
-# TODO: Make it possible to have no default, thus skipping datasets
-# TODO: Automatically create datasets from merging subtrees if they do not exist
-#       (for non-inheritance)
-# TODO: Create class that handles all options?
-# TODO: Need to support a list of maps and concat datasets over maps (for impact funcs)
-# TODO: Need support to have multiple trees as arguments
-# TODO: Access impact function registry based on value type in mapping
-def map_over_datatree(
-    func_map: Mapping[Hashable, Callable[[xr.Dataset], xr.Dataset]], tree: xr.DataTree
-):
-    """Apply a function map over a data tree"""
-    dsets = {}
-    for node in tree.subtree:
-        if not node.has_data:
-            continue
-
-        def find_name_or_path(node, mapping, default):
-            path = node.path
-            # Exact path
-            if path in mapping:
-                return mapping[path]
-            # Name (last path component)
-            if node.name in mapping:
-                return mapping[node.name]
-            # Any parent path
-            if not node.is_root:
-                return find_name_or_path(node.parent, mapping, default)
-            # No match
-            return default
-
-        # Find associated function
-        default_func = (
-            func_map[FuncLeaf]
-            if (node.is_leaf and FuncLeaf in func_map)
-            else func_map[FuncDefault]
-        )
-        func = find_name_or_path(node, func_map, default=default_func)
-
-        # Apply function
-        dsets[node.path] = func(node.ds)
-
-    # Create tree
-    return xr.DataTree.from_dict(dsets)
+    if not inplace:
+        return root
 
 
 def map_impact_function(
@@ -280,6 +335,7 @@ def map_aggregate_function(
 
 class TreeMapper:
     """Class for mapping impact function (maps) to trees and returning the result"""
+
     def __init__(
         self,
         tree: xr.DataTree,
@@ -288,12 +344,12 @@ class TreeMapper:
     ):
         """Initialize the mapper"""
         self._tree = tree
-        self._func_map = self._function_to_map(func_map)
+        self._func_map = self.function_to_map(func_map)
         self._dsets = {}
         self._registry = registry
 
     @staticmethod
-    def _function_to_map(
+    def function_to_map(
         func_or_map: DatasetFunction | Mapping[Hashable, DatasetFunction | Hashable],
     ) -> Mapping[Hashable, DatasetFunction | Hashable]:
         """Promote a single impact function to a function map with default entry"""
@@ -303,25 +359,26 @@ class TreeMapper:
 
     def apply(self, use_parent: bool, use_merge: bool):
         """Apply the function map to the tree"""
-        for node in self._tree.subtree:
+        for path, node in self._tree.subtree_with_keys:
             # Find suitable function
-            func = self._get_func(node, use_parent=use_parent)
+            func = self._get_func(node, use_parent=use_parent, use_default=True)
             if func is None:
-                self._dsets[node.path] = None
+                self._dsets[path] = None
                 continue
 
-            # Merge leafs, if the node does not have data
+            # Merge leafs if the node does not have data
+            ds = node.dataset
             if not node.has_data:
                 if not use_merge:
                     continue
-                node = merge_tree_dset(root=node, drop_subtree=True)
+                ds = merge_tree_dset(root=node, drop_subtree=True).dataset
 
             # Apply function
-            self._dsets[node.path] = func(node.dataset)
+            self._dsets[path] = func(ds)
 
     # TODO: What about indicating levels?
     def _get_map_entry(
-        self, node: xr.DataTree, use_parent: bool
+        self, node: xr.DataTree, use_parent: bool, use_default: bool
     ) -> Callable | Hashable | None:
         """Retrieve the impact function map entry for a specific node"""
         path = node.path
@@ -329,20 +386,30 @@ class TreeMapper:
         if path in self._func_map:
             return self._func_map[path]
         # Name (last path component)
-        if node.name in self._func_map:
+        if node.name is not None and node.name in self._func_map:
             return self._func_map[node.name]
-        # Any parent path
+        # Any parent path (but not reverting to default here!)
         if use_parent and not node.is_root:
-            return self._get_func(node.parent, use_parent=use_parent)
+            entry = self._get_func(
+                node.parent, use_parent=use_parent, use_default=False
+            )
+            if entry is not None:
+                return entry
         # Maybe return leaf func
         if node.is_leaf and FuncType.leaf in self._func_map:
             return self._func_map[FuncType.leaf]
         # Return default or None
-        return self._func_map.get(FuncType.default, None)
+        if use_default:
+            return self._func_map.get(FuncType.default, None)
+        return None
 
-    def _get_func(self, node: xr.DataTree, use_parent: bool) -> Callable | None:
+    def _get_func(
+        self, node: xr.DataTree, use_parent: bool, use_default: bool
+    ) -> Callable | None:
         """Retrieve an impact function (or None) for a specific node"""
-        entry = self._get_map_entry(node=node, use_parent=use_parent)
+        entry = self._get_map_entry(
+            node=node, use_parent=use_parent, use_default=use_default
+        )
 
         # Try to retrieve registry item
         if entry is not None and not callable(entry):
@@ -353,6 +420,7 @@ class TreeMapper:
 
         return entry
 
+    # TODO: Add prune?
     def result(self):
         """Return the new tree (must apply first)"""
         return xr.DataTree.from_dict(self._dsets)
