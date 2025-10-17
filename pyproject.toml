@@ -40,3 +40,6 @@ exclude = ["*.ipynb"]
 
 [tool.ruff.lint.pylint]
 max-args = 8
+
+[tool.ruff.format]
+exclude = ["scripts/*.ipynb"]
