@@ -212,8 +212,10 @@ class EnginePaths:
 #     def __init__(
 #         self,
 #         hazard: xr.Dataset | xr.DataArray,
-#         # NOTE: Could also be Dataset with multiple, in this case the variables have to
-#         #       match. Generally: Load dataset, but use array if only a single variable
+#         # NOTE: Could also be Dataset with multiple, in this case the variables have
+#         #       to
+#         #       match. Generally: Load dataset, but use array if only a single
+#         #       variable
 #         exposure: xr.DataTree | xr.Dataset | xr.DataArray,
 #         impf_map: ImpactFunctionMap | None = None,
 #         *,
@@ -464,7 +466,10 @@ class Engine:
         #       https://github.com/pydata/xarray/issues/10013
         # assert damage.isomorphic(self.exposure)
         # return xr.DataTree.from_dict(
-        #     {node.path: damage[node.path].ds * node.ds for node in self.exposure.leaves}
+        #     {
+        #         node.path: (damage[node.path].ds * node.ds)
+        #         for node in self.exposure.leaves
+        #     }
         # )
 
     def _sample_impact(self, samples: pd.DataFrame) -> xr.DataTree:

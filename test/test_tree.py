@@ -1,7 +1,6 @@
 """Test functions for tree operations"""
 
 import itertools as it
-from unittest.mock import patch
 
 import geopandas as gpd
 import numpy as np
@@ -27,9 +26,9 @@ from climadace.tree import (
     map_aggregate_function,
     map_impact_function,
     map_over_datasets,
+    merge_by_combine,
     merge_tree_dset,
     split_from_geo,
-    merge_by_combine,
 )
 
 
@@ -58,7 +57,7 @@ def datatree(dataset):
 
 @pytest.mark.skip("Check for unaligned DataTree nodes")
 def test_tree_roots():
-    dt = xr.DataTree.from_dict(
+    xr.DataTree.from_dict(
         {
             "a": xr.Dataset(
                 {"var1": (["x", "y"], np.ones((3, 4), dtype="float"))},
@@ -349,12 +348,12 @@ class TestTreeMerge:
         # Alignment error
         with pytest.raises(ValueError) as err:
             merged = merge_tree_dset(datatree, drop_subtree=False)
-        assert "Use 'drop-subtree=True'" in str(err)
+        assert "not aligned" in str(err)
 
         # No alignment error
-        dt = xr.DataTree.from_dict({
-            "/a": dataset.where(dataset["x"] < 1), "/b": dataset
-        })
+        dt = xr.DataTree.from_dict(
+            {"/a": dataset.where(dataset["x"] < 1), "/b": dataset}
+        )
         merged = merge_tree_dset(dt, drop_subtree=False)
         dt.ds = dataset
         xr.testing.assert_identical(merged, dt)
@@ -485,9 +484,7 @@ class TestSplitFromGeo:
     def test_keep_exterior(
         self, geo_dataset, geo_dataframe, geo_series, assert_split_1_2
     ):
-        dt = split_from_geo(
-            geo_dataset, geo_dataframe, keep_exterior=True
-        )
+        dt = split_from_geo(geo_dataset, geo_dataframe, keep_exterior=True)
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
             [".", "_exterior", "1", "2"]
         )

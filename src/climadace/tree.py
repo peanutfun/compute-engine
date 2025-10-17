@@ -1,6 +1,6 @@
 """Operations on trees"""
 
-from typing import Any, Callable, Hashable, Mapping, overload, Literal, Iterable
+from typing import Any, Callable, Hashable, Iterable, Literal, Mapping, overload
 
 import geopandas as gpd
 import numpy as np
@@ -152,12 +152,13 @@ class TreeSplitter:
 
         # Infer groupby kwargs
         if groupby_kws is None:
-            if len(gdf.columns) > 2:
+            non_geo_columns = gdf.drop(columns=gdf.active_geometry_name).columns
+            if len(non_geo_columns) != 1:
                 raise ValueError(
                     "GeoDataFrame must have exactly one other column than the geometry "
                     "column to infer groupby key"
                 )
-            groupby_kws = {"by": gdf.drop(columns=gdf.active_geometry_name).columns[0]}
+            groupby_kws = {"by": non_geo_columns[0]}
 
         # Convert to odc geometries
         odc_geometry_col = "_" + (gdf.active_geometry_name or "geometry") + "_odc"
@@ -310,25 +311,7 @@ def merge_tree_dset(
     # Merge the leaf datasets and possibly drop them
     if drop_subtree:
         root.children = {}
-    try:
-        root.update(
-            merge_by_combine(*(node.dataset for node in leaf_nodes))
-            # xr.merge(
-            #     [node.dataset for node in leaf_nodes],
-            #     join="outer",
-            #     compat="no_conflicts",  # Very slow :(
-            #     # compat="override",  # Error-prone, but MUCH faster!
-            # )
-            # xr.concat(
-            #     [node.dataset for node in leaf_nodes], dim="_concat", join="outer"
-            # ).sum(dim="_concat", skipna=True, min_count=1)
-        )
-    except ValueError as err:
-        if "not aligned with its parents" in str(err):
-            raise ValueError(
-                "Children are not aligned with merged parent. Use 'drop-subtree=True'"
-            ) from err
-        raise err
+    root.update(merge_by_combine(*(node.dataset for node in leaf_nodes)))
 
     if not inplace:
         return root
@@ -383,14 +366,15 @@ class TreeMapper:
                 self._dsets[path] = None
                 continue
 
-            # Merge leafs, if the node does not have data
+            # Merge leafs if the node does not have data
+            ds = node.dataset
             if not node.has_data:
                 if not use_merge:
                     continue
-                node = merge_tree_dset(root=node, drop_subtree=True)
+                ds = merge_tree_dset(root=node, drop_subtree=True).dataset
 
             # Apply function
-            self._dsets[path] = func(node.dataset)
+            self._dsets[path] = func(ds)
 
     # TODO: What about indicating levels?
     def _get_map_entry(
