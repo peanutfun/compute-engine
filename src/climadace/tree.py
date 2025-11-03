@@ -101,7 +101,6 @@ def split_from_groupby(
     return splitter.result(inplace=inplace, prune_node=prune_node)
 
 
-# TODO: Low resolution mode (convert CRS of gdf, not geometry)
 def split_from_geo(
     node: xr.Dataset | xr.DataTree,
     gdf: gpd.GeoDataFrame,

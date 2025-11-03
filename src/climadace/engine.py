@@ -11,7 +11,7 @@ import pandas as pd
 import xarray as xr
 
 from . import funcs
-from .impact_funcs import ImpactFunctionMap
+from .impact_funcs import FuncType
 from .io import maybe_cache_zarr
 from .tree import (
     map_aggregate_function,
@@ -72,11 +72,11 @@ def derive_event_dims(
 
 
 @overload
-def promote_to_dataset(arr: Any, name: str, force_name: bool) -> Any: ...
-@overload
 def promote_to_dataset(
     arr: xr.DataArray | xr.Dataset, name: str, force_name: bool
 ) -> xr.Dataset: ...
+@overload
+def promote_to_dataset(arr: Any, name: str, force_name: bool) -> Any: ...
 def promote_to_dataset(arr, name, force_name: bool = False):
     if isinstance(arr, xr.DataArray):
         if arr.name and not force_name:
@@ -86,82 +86,14 @@ def promote_to_dataset(arr, name, force_name: bool = False):
 
 
 @overload
-def promote_to_datatree(arr: Any, name: str) -> Any: ...
-@overload
 def promote_to_datatree(arr: AnyXarray, name: str) -> xr.DataTree: ...
+@overload
+def promote_to_datatree(arr: Any, name: str) -> Any: ...
 def promote_to_datatree(arr, name):
     arr = promote_to_dataset(arr, name, force_name=False)
     if isinstance(arr, xr.Dataset):
         arr = xr.DataTree(dataset=arr, name=name)
     return arr
-
-
-# @dataclass
-# class EngineOld:
-#     # Class input
-#     hazard: xr.DataArray
-#     exposure: xr.DataArray
-#     impact_func: Callable
-#     data_dir: InitVar[Path | str] = Path("~/Desktop/ImpactEngine").expanduser()
-
-#     # Set by __post_init__
-#     output_dir: Path = field(init=False)
-#     event_dims: dict[str, Hashable | None] = field(init=False)
-
-#     # Set later
-#     impact: xr.DataArray = field(init=False, default_factory=lambda: xr.DataArray())
-#     aggregates: xr.Dataset = field(init=False, default_factory=lambda: xr.Dataset())
-
-#     def __post_init__(self, data_dir):
-#         """Initialize"""
-#         # Create output directory
-#         data_dir = Path(data_dir)
-#         data_dir.mkdir(exist_ok=True)
-#         self.output_dir = data_dir / datetime.now().isoformat()
-#         self.output_dir.mkdir()
-
-#         # Detect dimensions
-#         self.event_dims = derive_event_dims(self.hazard)
-
-#     def reproject_hazard(self, cache_result: bool = True) -> xr.DataArray:
-#         """Reproject the hazard onto the exposure"""
-#         self.hazard = funcs.reproject_hazard(
-#             self.hazard, self.exposure, align_chunks=True
-#         )
-#         if cache_result:
-#             self.hazard = funcs.cache_zarr(self.hazard, self.output_dir / "hazard")
-#         return self.hazard
-
-#     def compute(self, cache_result: bool = True):
-#         """Compute impact"""
-#         self.impact = compute_impact(
-#             hazard=self.hazard, exposure=self.exposure, impact_func=self.impact_func
-#         )
-#         if cache_result:
-#             self.impact = funcs.cache_zarr(self.impact, self.output_dir / "impact")
-#         return self.impact
-
-#     def aggregate(self, cache_result: bool = True):
-#         """Compute aggregates"""
-#         if not self.impact.data_vars:
-#             self.compute(cache_result=False)
-#         at_event = self.impact.sum(dim=[self.impact.rio.x_dim, self.impact.rio.y_dim])
-#         self.aggregates = xr.Dataset({"at_event": at_event})
-
-#         if self.event_dims["event"] is not None:
-#             self.aggregates["average_impact"] = at_event.mean(
-#                 dim=self.event_dims["event"]
-#             )
-#         if self.event_dims["time"] is not None:
-#             self.aggregates["average_annual_impact"] = at_event.groupby(
-#                 at_event[self.event_dims["time"]].dt.year
-#             ).mean()
-
-#         if cache_result:
-#             self.aggregates = funcs.cache_zarr(
-#                 self.aggregates, self.output_dir / "aggregates"
-#             )
-#         return self.aggregates
 
 
 class EventAlignment(Enum):
@@ -200,119 +132,6 @@ class EnginePaths:
         )
 
 
-# class Engine:
-#     # Class input
-#     # impact_func: Callable
-#     # data_dir: InitVar[Path | str] = Path("~/Desktop/ImpactEngine").expanduser()
-
-#     # Set by __post_init__
-#     # output_dir: Path = field(init=False)
-#     # event_dims: dict[str, Hashable | None] = field(init=False)
-
-#     def __init__(
-#         self,
-#         hazard: xr.Dataset | xr.DataArray,
-#         # NOTE: Could also be Dataset with multiple, in this case the variables have
-#         #       to
-#         #       match. Generally: Load dataset, but use array if only a single
-#         #       variable
-#         exposure: xr.DataTree | xr.Dataset | xr.DataArray,
-#         impf_map: ImpactFunctionMap | None = None,
-#         *,
-#         align_exposure: bool = True,
-#         reproject_hazard: bool = True,
-#         data_dir: Path | str = Path(
-#             "~/Desktop/ImpactEngine"
-#         ).expanduser()  # Make this a configuration setting
-#     ):
-#         """Initialize"""
-
-#         # Create output directory
-#         data_dir = Path(data_dir)
-#         data_dir.mkdir(exist_ok=True)
-#         output_dir = data_dir / datetime.now().isoformat()
-#         self.paths = EnginePaths.from_base_dir(output_dir)
-#         self.paths.base_dir.mkdir()
-
-#         # Detect dimensions
-#         self.hazard = hazard
-#         self.event_dims = derive_event_dims(self.hazard)
-#         self.impf_map = impf_map
-
-#         # Align exposure
-#         self.exposure = exposure
-
-#         # Output variables
-#         self._impact = None
-#         self.aggregates = xr.DataTree()
-
-#         if align_exposure:
-#             self.align_exposure()
-#             self.exposure = self._maybe_cache(self.exposure, self.paths.exposure)
-#         if reproject_hazard:
-#             self.reproject_hazard()
-#             self.hazard = self._maybe_cache(self.hazard, self.paths.hazard)
-
-#     # TODO: What to do when exposure is tree?
-#     def align_exposure(self):
-#         """Align events in exposure"""
-#         self.exposure = funcs.align_exposure(self.hazard, self.exposure)
-
-#     def reproject_hazard(self):
-#         """Reproject the hazard onto the exposure"""
-#         self.hazard = funcs.reproject_hazard(self.hazard, self.exposure)
-
-#     @property
-#     def impact(self) -> xr.DataTree:
-#         """Return or compute the impact"""
-#         if self._impact is None:
-#             self._impact = self.compute()
-#             self._impact = self._maybe_cache(self._impact, self.paths.impact)
-#         return self._impact
-
-#     def _maybe_cache(self, data: AnyXarray, path: Path) -> AnyXarray:
-#         """Decide if data should be cached. Return the cached or non-cached data"""
-#         if funcs.is_chunked(data):
-#             data = cache_zarr(arr=data, path=path)
-#         return data
-
-#     def compute(self, impf_map: ImpactFunctionMap | None = None) -> xr.DataTree:
-#         """Compute impact"""
-#         self.hazard = promote_to_dataset(self.hazard)
-#         self.exposure = promote_to_datatree(self.exposure, "exposure")
-
-#         # Use default impf_map
-#         if impf_map is None:
-#             if self.impf_map is None:
-#                 raise RuntimeError("No impact function map specified!")
-#             impf_map = self.impf_map
-
-#         # Compute
-#         impact = map_over_datatree(impf_map, self.hazard) * self.exposure
-#         return impact
-
-#     def aggregate(self, cache_result: bool = True):
-#         """Compute aggregates"""
-#         if not self.impact.data_vars:
-#             self.compute(cache_result=False)
-#         at_event = self.impact.sum(dim=[self.impact.rio.x_dim, self.impact.rio.y_dim])
-#         self.aggregates = xr.Dataset({"at_event": at_event})
-
-#         if self.event_dims["event"] is not None:
-#             self.aggregates["average_impact"] = at_event.mean(
-#                 dim=self.event_dims["event"]
-#             )
-#         if self.event_dims["time"] is not None:
-#             self.aggregates["average_annual_impact"] = at_event.groupby(
-#                 at_event[self.event_dims["time"]].dt.year
-#             ).mean()
-
-
-#         if cache_result:
-#             self.aggregates = funcs.cache_zarr(
-#                 self.aggregates, self.output_dir / "aggregates"
-#             )
-#         return self.aggregates
 def tree_divide(dset: xr.Dataset, tree: xr.DataTree):
     return xr.DataTree.from_dict(
         {node.path: xr.align(dset, node.ds, join="right")[0] for node in tree.leaves}
@@ -369,8 +188,11 @@ class Aligner:
         return self._exposure
 
 
-# NOTE: For applying impf to hazard, it's better if it is also a tree
-# TODO: Add aggregates
+ImpactFuncSpecSingle = DatasetFunction | Mapping[str | FuncType, DatasetFunction | str]
+ImpactFuncSpec = ImpactFuncSpecSingle | Sequence[ImpactFuncSpecSingle]
+
+
+# TODO: Add new engine for unsequa/sampling
 class Engine:
     # hazard: xr.Dataset
     # exposure: xr.DataTree
@@ -385,7 +207,7 @@ class Engine:
         self,
         hazard: xr.DataTree | xr.Dataset,  # Makes sense? Tree MUST align with exposure
         exposure: xr.DataTree,
-        impf_map: ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap],
+        impf_map: ImpactFuncSpec,
         *,
         workdir: Path | None = None,
         cache_policy: CachePolicy = CachePolicy.never,
@@ -425,21 +247,17 @@ class Engine:
         return maybe_cache_zarr(arr=data, path=path, cache_policy=self._cache_policy)
 
     @property
-    def impf_map(
-        self,
-    ) -> ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap]:
+    def impf_map(self) -> ImpactFuncSpec:
         return self._impf_map
 
     @impf_map.setter
-    def impf_map(
-        self, value: ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap]
-    ):
+    def impf_map(self, value: ImpactFuncSpec):
         self._impf_map = value
         self._impact = xr.DataTree()  # Resets impact
 
     def _compute_single_impact(
         self,
-        impf_map: ImpactFunctionMap | DatasetFunction | Sequence[ImpactFunctionMap],
+        impf_map: ImpactFuncSpec,
     ) -> xr.DataTree:
         damage = map_impact_function(func_map=impf_map, tree=self.hazard)
         return map_over_datasets(lambda dmg, exp: dmg * exp, damage, self.exposure)
@@ -481,7 +299,6 @@ class Engine:
             *impact_samples,
         )
 
-    # NOTE: Unnecessary work if impact is computed eagerly!
     def impact(
         self,
         impf_map=None,
@@ -502,13 +319,22 @@ class Engine:
         return self._impact
 
     def aggregate(
-        self, aggregate, *aggregates
+        self, aggregate, *aggregates, compute=True
     ) -> xr.DataTree | tuple[xr.DataTree, ...]:
-        impact = self.impact(samples=None)
-        if not aggregates:
-            return map_aggregate_function(tree=impact, func_map=aggregate)
+        def map_and_compute(aggregate_func):
+            result = map_aggregate_function(
+                tree=self._impact, func_map=aggregate_func
+            ).sp.to_dense()
+            if compute:
+                result = result.compute()
+            return result
 
+        self.impact(samples=None)  # Assert impact object exists
+        if not aggregates:
+            return map_and_compute(aggregate)
+
+        # Load sparse impact because we compute multiple aggregates
+        self._impact = self._impact.sp.to_sparse().compute()
         return tuple(
-            map_aggregate_function(tree=impact, func_map=agg)
-            for agg in (aggregate,) + aggregates
+            map_and_compute(aggregate_func=agg) for agg in (aggregate,) + aggregates
         )

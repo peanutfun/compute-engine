@@ -9,9 +9,31 @@ from typing import Any, Callable, Final
 import numpy as np
 import numpy.typing as npt
 import xarray as xr
+import sparse as sp
 
 from .types import DatasetOrArray
 
+# from .sparse import NaNArray
+
+
+def interp(x: sp.SparseArray, *args, **kwargs):
+    out_kwargs = {}
+    if isinstance(x, sp.GCXS):
+        out_type = sp.GCXS
+        out_kwargs["compressed_axes"] = x.compressed_axes
+    elif isinstance(x, sp.COO):
+        out_type = sp.COO
+    else:
+        out_type = sp.DOK
+
+    arr = x.asformat("coo")
+    data = np.interp(arr.data, *args, **kwargs)
+    fill_value = np.interp(arr.fill_value, *args, **kwargs)
+    return sp.COO(
+        data=data, coords=arr.coords, shape=arr.shape, fill_value=fill_value, prune=True
+    ).asformat(out_type, **out_kwargs)
+
+sp.interp = interp  # Inject 'interp' into sparse
 
 # # TODO: Should it store a name? -> NO: Names only for registered impact functions!
 class ImpactFunctionBase(ABC):

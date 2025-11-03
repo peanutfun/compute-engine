@@ -24,7 +24,7 @@ def zero_to_nan(array: ArrayLike, exact: bool = False) -> np.ndarray:
     return array
 
 
-class SparseArray(sparse.GCXS):
+class NaNArray(sparse.GCXS):
     """Specialization of a the sparse array with fixed, non-default fill value"""
 
     fill_value = np.nan
@@ -37,7 +37,7 @@ class SparseArray(sparse.GCXS):
 
 def to_sparse(
     data: xr.DataArray,
-    array_type: type[AnySparseArray] = SparseArray,
+    array_type: type[AnySparseArray] = sparse.GCXS,
     dtype: DTypeLike | None = None,
     preprocess: Callable[[ArrayLike], ArrayLike] = zero_to_nan,
     fill_value=np.nan,

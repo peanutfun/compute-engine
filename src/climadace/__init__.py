@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 
-import sparse as sparse
+from . import sparse  # noqa: F401
 from dask.distributed import Client
 
 from .aggregates import at_event, average_event_impact

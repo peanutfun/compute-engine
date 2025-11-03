@@ -133,9 +133,8 @@ class TestTreeSplitter:
         ]
         return splitter
 
-    @pytest.mark.parametrize(
-        "inplace,prune_node", list(it.product((True, False), repeat=2))
-    )
+    @pytest.mark.parametrize("inplace", (True, False))
+    @pytest.mark.parametrize("prune_node", (True, False))
     def test_result(self, splitter_with_child_nodes, dataset, inplace, prune_node):
         result = splitter_with_child_nodes.result(
             inplace=inplace, prune_node=prune_node

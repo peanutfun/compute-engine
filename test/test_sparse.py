@@ -7,7 +7,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import array_shapes, arrays
 
-from climadace.sparse import SparseArray, zero_to_nan
+from sparse import SparseArray
+
+from climadace.sparse import zero_to_nan
 
 
 @st.composite
