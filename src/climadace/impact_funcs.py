@@ -8,8 +8,8 @@ from typing import Any, Callable, Final
 
 import numpy as np
 import numpy.typing as npt
-import xarray as xr
 import sparse as sp
+import xarray as xr
 
 from .types import DatasetOrArray
 
@@ -33,7 +33,9 @@ def interp(x: sp.SparseArray, *args, **kwargs):
         data=data, coords=arr.coords, shape=arr.shape, fill_value=fill_value, prune=True
     ).asformat(out_type, **out_kwargs)
 
+
 sp.interp = interp  # Inject 'interp' into sparse
+
 
 # # TODO: Should it store a name? -> NO: Names only for registered impact functions!
 class ImpactFunctionBase(ABC):

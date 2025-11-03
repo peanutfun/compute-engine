@@ -6,7 +6,6 @@ import xarray as xr
 from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import array_shapes, arrays
-
 from sparse import SparseArray
 
 from climadace.sparse import zero_to_nan

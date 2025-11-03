@@ -94,6 +94,7 @@ def test_norm_chunks_no_ref(simple_dataarray):
     result = norm_chunks(arr)
     assert result.chunksizes == arr.unify_chunks().chunksizes
 
+
 # TODO: Check behavior for datasets with arrays whose chunksizes differ
 def test_norm_chunks_with_ref(simple_dataarray):
     arr = simple_dataarray.chunk((2, 2))

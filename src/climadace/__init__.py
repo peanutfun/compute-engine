@@ -2,9 +2,9 @@
 
 from contextlib import contextmanager
 
-from . import sparse  # noqa: F401
 from dask.distributed import Client
 
+from . import sparse  # noqa: F401
 from .aggregates import at_event, average_event_impact
 from .engine import Aligner, Engine, align
 from .funcs import align_exposure, reproject_hazard
