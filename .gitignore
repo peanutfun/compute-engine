@@ -221,3 +221,6 @@ __marimo__/
 
 /data
 /src/climadace/data/
+
+# macOS
+*.DS_Store
