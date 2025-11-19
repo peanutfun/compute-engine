@@ -4,7 +4,7 @@ import pytest
 import rioxarray  # noqa: F401
 import xarray as xr
 
-from climadace.chunks import (
+from crace.chunks import (
     is_chunked,
     merge_dicts,
     norm_chunks,

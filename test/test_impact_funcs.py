@@ -4,7 +4,7 @@ import numpy as np
 import numpy.testing as npt
 import pytest
 
-from climadace.impact_funcs import (
+from crace.impact_funcs import (
     FunctionMap,
     ImpactFunction,
     ImpactFunctionMap,

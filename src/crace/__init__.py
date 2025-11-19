@@ -1,4 +1,4 @@
-"""CLIMADA-CE"""
+"""CRACE"""
 
 from contextlib import contextmanager
 
@@ -71,13 +71,12 @@ def dask_client(n_workers, threads_per_worker, memory_limit, *args, **kwargs):
 
 __all__ = [
     "sparse",
-    "dask_clientat_event",
+    "dask_client",
+    "at_event",
     "average_event_impact",
     "align",
     "Engine",
     "align",
-    "align_exposure",
-    "reproject_hazard",
     "REGISTRY",
     "FuncType",
     "ImpactFunctionMap",

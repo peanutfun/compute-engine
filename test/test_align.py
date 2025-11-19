@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from climadace.align import rename_spatial_dims
+from crace.align import rename_spatial_dims
 
 
 @pytest.fixture

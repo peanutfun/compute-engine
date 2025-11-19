@@ -12,14 +12,14 @@ from odc.geo.geobox import GeoBox
 from odc.geo.xr import xr_zeros
 from shapely.geometry import Point
 
-from climadace.impact_funcs import (
+from crace.impact_funcs import (
     REGISTRY,
     FuncDefault,
     FuncLeaf,
     FuncType,
     ImpactFunctionMap,
 )
-from climadace.tree import (
+from crace.tree import (
     TreeMapper,
     TreeSplitter,
     dropna_spatial_dims,

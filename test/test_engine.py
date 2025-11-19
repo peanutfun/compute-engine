@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from climadace.engine import Engine
-from climadace.impact_funcs import FuncType, ImpactFunctionMap
-from climadace.tree import map_over_datasets
+from crace.engine import Engine
+from crace.impact_funcs import FuncType, ImpactFunctionMap
+from crace.tree import map_over_datasets
 
 
 @pytest.fixture
