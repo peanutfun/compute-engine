@@ -4,12 +4,11 @@ import pytest
 import rioxarray  # noqa: F401
 import xarray as xr
 
-from climadace.funcs import (
+from climadace.chunks import (
     is_chunked,
     merge_dicts,
     norm_chunks,
     normed_chunksize,
-    rename_spatial_dims,
 )
 
 
@@ -104,21 +103,3 @@ def test_norm_chunks_with_ref(simple_dataarray):
     ).chunk((1, 1, 4))
     result = norm_chunks(arr, ref=ref)
     assert dict(result.chunksizes) == {"x": (4,), "y": (2, 2)}
-
-
-def test_rename_spatial_dims(simple_dataarray):
-    # Create a DataArray with dimensions that are known spatial axes
-    arr = simple_dataarray.copy()
-    arr.rio.set_spatial_dims("x", "y", inplace=True)
-
-    # Create a target with different dimension names
-    target = arr.copy()
-    target = target.rename({"x": "lon", "y": "lat"})
-    target.rio.set_spatial_dims("lon", "lat", inplace=True)
-
-    # Rename arr's spatial dims to match target
-    result = rename_spatial_dims(arr, target)
-
-    assert set(result.dims) == {"lon", "lat"}
-    assert result.rio.x_dim == target.rio.x_dim
-    assert result.rio.y_dim == target.rio.y_dim

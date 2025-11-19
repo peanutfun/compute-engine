@@ -4,10 +4,10 @@ from contextlib import contextmanager
 
 from dask.distributed import Client
 
-from . import sparse  # noqa: F401
+from . import sparse
 from .aggregates import at_event, average_event_impact
-from .engine import Aligner, Engine, align
-from .funcs import align_exposure, reproject_hazard
+from .align import align
+from .engine import Engine
 from .impact_funcs import (
     REGISTRY,
     FuncType,
@@ -67,3 +67,33 @@ def dask_client(n_workers, threads_per_worker, memory_limit, *args, **kwargs):
         yield client
     finally:
         client.close()
+
+
+__all__ = [
+    "sparse",
+    "dask_clientat_event",
+    "average_event_impact",
+    "align",
+    "Engine",
+    "align",
+    "align_exposure",
+    "reproject_hazard",
+    "REGISTRY",
+    "FuncType",
+    "ImpactFunctionMap",
+    "ImpactFunctionRegistry",
+    "impact_function",
+    "open_dataarray",
+    "open_dataset",
+    "open_datatree",
+    "dropna_spatial_dims",
+    "map_aggregate_function",
+    "map_impact_function",
+    "map_over_datasets",
+    "mask_dataset",
+    "merge_tree_dset",
+    "split_from_geo",
+    "split_from_groupby",
+    "split_from_groupby_bins",
+    "CachePolicy",
+]

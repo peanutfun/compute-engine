@@ -68,13 +68,25 @@ def dropna_spatial_dims(data: DatasetOrArray) -> DatasetOrArray:
 def mask_dataset(
     data: DatasetOrArray,
     geometry: odc.geo.geom.Geometry,
-    dropna: bool = False,
-    **mask_kwargs,
+    prune: bool = False,
+    all_touched: bool = True,
+    invert: bool = False,
 ) -> DatasetOrArray:
-    """Mask data using a geometry and possibly drop coordinates without values"""
-    data = data.odc.mask(geometry, **mask_kwargs)
-    if dropna:
-        data = dropna_spatial_dims(data)
+    """Mask data using a geometry and possibly drop coordinates without values
+
+    See https://odc-geo.readthedocs.io/en/latest/_api/odc.geo.xr.ODCExtension.mask.html#odc.geo.xr.ODCExtension.mask"""
+    if prune:
+        res_x, res_y = data.odc.geobox.resolution.xy
+        minx, miny, maxx, maxy = geometry.boundingbox.buffered(
+            xbuff=abs(res_x), ybuff=abs(res_y)
+        )
+        if res_y < 0:
+            # y-coordinates are inverted
+            miny, maxy = maxy, miny
+        data = data.sel(
+            {data.rio.x_dim: slice(minx, maxx), data.rio.y_dim: slice(miny, maxy)}
+        )
+    data = data.odc.mask(geometry, invert=invert, all_touched=all_touched)
     return data
 
 
@@ -101,6 +113,7 @@ def split_from_groupby(
     return splitter.result(inplace=inplace, prune_node=prune_node)
 
 
+# TODO: prune mask
 def split_from_geo(
     node: xr.Dataset | xr.DataTree,
     gdf: gpd.GeoDataFrame,
@@ -256,25 +269,17 @@ def merge_tree_dset(
     root: xr.DataTree,
     drop_subtree: bool = ...,
     overwrite: bool = ...,
-    inplace: Literal[False] = False,
+    inplace: Literal[False] = ...,
 ) -> xr.DataTree: ...
 
 
 @overload
 def merge_tree_dset(
     root: xr.DataTree,
-    *,
-    inplace: Literal[True],
+    drop_subtree: bool = ...,
+    overwrite: bool = ...,
+    inplace: Literal[True] = ...,
 ) -> None: ...
-
-
-@overload
-def merge_tree_dset(
-    root: xr.DataTree,
-    drop_subtree: bool,
-    overwrite: bool,
-    inplace: bool,
-) -> xr.DataTree | None: ...
 
 
 # TODO: Option: Use closest dsets (need not be hollow)

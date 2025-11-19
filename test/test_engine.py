@@ -30,8 +30,8 @@ def datatree(dataset):
 
 
 @pytest.fixture
-def hazard(datatree):
-    return datatree
+def hazard(dataset):
+    return dataset
 
 
 @pytest.fixture
@@ -89,12 +89,7 @@ def test_impact_multi_map(hazard, exposure, datatree):
 
 
 def test_impact_sampling(hazard, exposure, datatree):
-    hazard = map_over_datasets(
-        lambda *dsets: xr.concat(dsets, dim=pd.Index([0, 1, 2], name="foo")),
-        hazard,
-        hazard,
-        hazard,
-    )
+    hazard = xr.concat([hazard, hazard, hazard], dim=pd.Index([0, 1, 2], name="foo"))
     exposure = map_over_datasets(
         lambda *dsets: xr.concat(dsets, dim=pd.Index(["a", "b", "c"], name="bar")),
         exposure,

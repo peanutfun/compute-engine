@@ -17,3 +17,5 @@ class CachePolicy(Enum):
 
 
 DatasetFunction = Callable[[xr.Dataset], xr.Dataset]
+
+SPATIAL_DIM = "loc"

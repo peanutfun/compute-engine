@@ -7,7 +7,7 @@ import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from .funcs import DatasetOrArray
+from .types import DatasetOrArray
 
 # from .tree import DatasetNode
 

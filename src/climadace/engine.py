@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable, Hashable, Sequence, overload
+from typing import Callable, Hashable, Sequence
 
 import pandas as pd
 import xarray as xr
 
-from . import funcs
+from .chunks import is_chunked
 from .impact_funcs import FuncType
 from .io import maybe_cache_zarr
 from .tree import (
@@ -71,31 +71,6 @@ def derive_event_dims(
     }
 
 
-@overload
-def promote_to_dataset(
-    arr: xr.DataArray | xr.Dataset, name: str, force_name: bool
-) -> xr.Dataset: ...
-@overload
-def promote_to_dataset(arr: Any, name: str, force_name: bool) -> Any: ...
-def promote_to_dataset(arr, name, force_name: bool = False):
-    if isinstance(arr, xr.DataArray):
-        if arr.name and not force_name:
-            name = str(arr.name)
-        arr = arr.to_dataset(name=name, promote_attrs=True)
-    return arr
-
-
-@overload
-def promote_to_datatree(arr: AnyXarray, name: str) -> xr.DataTree: ...
-@overload
-def promote_to_datatree(arr: Any, name: str) -> Any: ...
-def promote_to_datatree(arr, name):
-    arr = promote_to_dataset(arr, name, force_name=False)
-    if isinstance(arr, xr.Dataset):
-        arr = xr.DataTree(dataset=arr, name=name)
-    return arr
-
-
 class EventAlignment(Enum):
     select = auto()
     interpolate = auto()
@@ -138,75 +113,16 @@ def tree_divide(dset: xr.Dataset, tree: xr.DataTree):
     )
 
 
-def align(
-    hazard: xr.DataArray | xr.Dataset, exposure: xr.DataArray | xr.Dataset
-) -> tuple[xr.Dataset, xr.DataTree]:
-    """Align hazard and exposure with default settings"""
-    aligner = Aligner(hazard=hazard, exposure=exposure)
-    return aligner.get_hazard(), aligner.get_exposure()
-
-
-class Aligner:
-    def __init__(
-        self,
-        hazard: xr.DataArray | xr.Dataset,
-        exposure: xr.DataArray | xr.Dataset,
-    ):
-        # Align hazard and exposure
-        exposure = funcs.align_exposure(hazard, exposure)
-        hazard = funcs.reproject_hazard(hazard, exposure)
-        exposure, hazard = self.align_names(exposure, hazard, "exposure")
-        self._exposure = promote_to_datatree(exposure, name="exposure")
-        self._hazard = promote_to_dataset(hazard, name="exposure")
-
-    @staticmethod
-    def align_names(
-        arr1: DatasetOrArray, arr2: DatasetOrArray, name_fallback
-    ) -> tuple[DatasetOrArray, DatasetOrArray]:
-        if isinstance(arr1, xr.DataArray):
-            if arr1.name is None:
-                arr1.name = name_fallback
-            name = arr1.name
-        elif isinstance(arr1, xr.Dataset) and len(arr1.data_vars) == 1:
-            name = next(iter(arr1.data_vars))
-        else:
-            print("WARNING! Could not align names")
-
-        if isinstance(arr2, xr.DataArray):
-            arr2.name = name
-        elif isinstance(arr2, xr.Dataset) and len(arr2.data_vars) == 1:
-            arr2 = arr2.rename({next(iter(arr2.data_vars)): name})
-        else:
-            print("WARNING! Could not align names")
-
-        return arr1, arr2
-
-    def get_hazard(self) -> xr.Dataset:
-        return self._hazard
-
-    def get_exposure(self) -> xr.DataTree:
-        return self._exposure
-
-
 ImpactFuncSpecSingle = DatasetFunction | Mapping[str | FuncType, DatasetFunction | str]
 ImpactFuncSpec = ImpactFuncSpecSingle | Sequence[ImpactFuncSpecSingle]
 
 
 # TODO: Add new engine for unsequa/sampling
 class Engine:
-    # hazard: xr.Dataset
-    # exposure: xr.DataTree
-    # impf_map: ImpactFunctionMap | list[ImpactFunctionMap] = InitVar()
-
-    # output_dir : Path
-
-    # event_dims: dict[str, Hashable] = field(init=False)
-    # _impact: xr.DataTree = field(init=False, default_factory=xr.DataTree)
-    # _aggregates: xr.DataTree = field(init=False, default_factory=xr.DataTree)
     def __init__(
         self,
-        hazard: xr.DataTree | xr.Dataset,  # Makes sense? Tree MUST align with exposure
-        exposure: xr.DataTree,
+        hazard: xr.Dataset,
+        exposure: xr.Dataset | xr.DataTree,
         impf_map: ImpactFuncSpec,
         *,
         workdir: Path | None = None,
@@ -219,28 +135,14 @@ class Engine:
 
         self.hazard = self._maybe_cache(hazard, self._paths.hazard)
         self.exposure = self._maybe_cache(exposure, self._paths.exposure)
-        if isinstance(self.hazard, xr.Dataset):
-            self.hazard = tree_divide(self.hazard, self.exposure)
+
+        # Build aligned DataTrees
+        if isinstance(self.exposure, xr.Dataset):
+            self.exposure = xr.DataTree(dataset=self.exposure)
+        self.hazard = tree_divide(self.hazard, self.exposure)
+
         self.impf_map = impf_map
         self._aggregates = xr.DataTree()
-
-    @classmethod
-    def from_aligner(
-        cls,
-        aligner: Aligner,
-        impf_map,
-        *,
-        workdir=None,
-        cache_policy=CachePolicy.never,
-    ):
-        """Create from aligner"""
-        return cls(
-            hazard=aligner.get_hazard(),
-            exposure=aligner.get_exposure(),
-            impf_map=impf_map,
-            workdir=workdir,
-            cache_policy=cache_policy,
-        )
 
     def _maybe_cache(self, data: AnyXarray, path: Path):
         """Maybe cache data"""
@@ -314,7 +216,7 @@ class Engine:
             self._impact = self._sample_impact(samples)
 
         self._maybe_cache(self._impact, self._paths.impact)
-        if compute:
+        if compute and is_chunked(self._impact):
             self._impact = self._impact.compute()
         return self._impact
 
@@ -322,19 +224,43 @@ class Engine:
         self, aggregate, *aggregates, compute=True
     ) -> xr.DataTree | tuple[xr.DataTree, ...]:
         def map_and_compute(aggregate_func):
-            result = map_aggregate_function(
-                tree=self._impact, func_map=aggregate_func
-            ).sp.to_dense()
-            if compute:
+            result = map_aggregate_function(tree=self._impact, func_map=aggregate_func)
+            # ).sp.to_dense()
+            if compute and is_chunked(result):
                 result = result.compute()
             return result
 
-        self.impact(samples=None)  # Assert impact object exists
-        if not aggregates:
-            return map_and_compute(aggregate)
+        def preprocess():
+            self.impact(samples=None)
+            if aggregates:
+                # Load sparse impact because we compute multiple aggregates
+                self._impact = self._impact.sp.to_sparse()
+                if is_chunked(self._impact):
+                    self._impact.compute()
 
-        # Load sparse impact because we compute multiple aggregates
-        self._impact = self._impact.sp.to_sparse().compute()
-        return tuple(
-            map_and_compute(aggregate_func=agg) for agg in (aggregate,) + aggregates
-        )
+        preprocess()
+        if not aggregates:
+            result = map_and_compute(aggregate)
+        else:
+            result = tuple(
+                map_and_compute(aggregate_func=agg) for agg in (aggregate,) + aggregates
+            )
+        return result
+
+    # def _impact_fill_zero(self):
+    #     if tree_is_empty(self._impact):
+    #         return
+
+    #     for node in self._impact.subtree:
+    #         for da in node.ds.data_vars.values():
+    #             if (arr := da.sp.array) is not None and np.isnan(arr.fill_value):
+    #                 arr.fill_value = 0.0
+
+    # def _impact_fill_nan(self):
+    #     if tree_is_empty(self._impact):
+    #         return
+
+    #     for node in self._impact.subtree:
+    #         for da in node.ds.data_vars.values():
+    #             if (arr := da.sp.array) is not None and arr.fill_value == 0.0:
+    #                 arr.fill_value = np.nan

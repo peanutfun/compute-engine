@@ -6,7 +6,7 @@ from pathlib import Path
 import xarray as xr
 
 from . import sparse  # noqa: F401
-from .funcs import is_chunked, norm_chunks
+from .chunks import is_chunked, norm_chunks
 from .types import AnyXarray, CachePolicy
 
 # DatasetOrArray = TypeVar("DatasetOrArray", xr.Dataset, xr.DataArray)

@@ -475,7 +475,9 @@ class TestSplitFromGeo:
         assert "GeoDataFrame must have exactly one other column" in str(exc)
 
     def test_prune_node(self, geo_dataset, geo_dataframe, assert_split_1_2):
-        dt = split_from_geo(geo_dataset, geo_dataframe, prune_node=False)
+        dt = split_from_geo(
+            geo_dataset, geo_dataframe, prune_node=False, mask_kws={"prune": False}
+        )
         assert not dt.is_hollow
         xrt.assert_identical(dt.to_dataset(), geo_dataset)
         assert_split_1_2(dt, geo_dataframe)
@@ -483,7 +485,9 @@ class TestSplitFromGeo:
     def test_keep_exterior(
         self, geo_dataset, geo_dataframe, geo_series, assert_split_1_2
     ):
-        dt = split_from_geo(geo_dataset, geo_dataframe, keep_exterior=True)
+        dt = split_from_geo(
+            geo_dataset, geo_dataframe, keep_exterior=True, mask_kws={"prune": False}
+        )
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
             [".", "_exterior", "1", "2"]
         )
@@ -494,15 +498,20 @@ class TestSplitFromGeo:
         xrt.assert_equal(dt["_exterior"].to_dataset(), ext)
 
     def test_return_unchanged(self, geo_dataset):
-        dt = split_from_geo(geo_dataset, gpd.GeoDataFrame())
+        dt = split_from_geo(geo_dataset, gpd.GeoDataFrame(), mask_kws={"prune": False})
         xrt.assert_identical(dt, xr.DataTree())
-        dt = split_from_geo(geo_dataset, gpd.GeoDataFrame(), prune_node=False)
+        dt = split_from_geo(
+            geo_dataset, gpd.GeoDataFrame(), prune_node=False, mask_kws={"prune": False}
+        )
         xrt.assert_identical(dt, xr.DataTree(geo_dataset))
 
     def test_pass_groupby_kwargs(self, geo_dataset, geo_dataframe, geo_series):
         geo_dataframe.loc[4, "cat"] = np.nan
         dt = split_from_geo(
-            geo_dataset, geo_dataframe, groupby_kws={"by": "cat", "dropna": False}
+            geo_dataset,
+            geo_dataframe,
+            groupby_kws={"by": "cat", "dropna": False},
+            mask_kws={"prune": False},
         )
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted(
             [".", "1.0", "2.0", "nan"]
