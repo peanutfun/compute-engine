@@ -19,11 +19,6 @@ documentation for details.
    climada
 
 
-.. .. automodule:: crace
-..     :members:
-..     :undoc-members:
-..     :show-inheritance:
-
 Indices and tables
 ==================
 
