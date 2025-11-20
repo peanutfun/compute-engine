@@ -1,4 +1,4 @@
-name: GitHub CI
+name: CI
 
 # Execute this for every pull request (opened, reopened, and synchronized)
 on: [pull_request]
