@@ -29,18 +29,32 @@ click==8.3.1
     # via
     #   click-plugins
     #   cligj
+    #   dask
+    #   distributed
     #   rasterio
 click-plugins==1.1.1.2
     # via rasterio
 cligj==0.7.2
     # via rasterio
+cloudpickle==3.1.2
+    # via
+    #   dask
+    #   distributed
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
     #   click
     #   pytest
     #   sphinx
+dask==2025.12.0
+    # via
+    #   crace
+    #   distributed
+distributed==2025.12.0
+    # via dask
 docutils==0.22.4
     # via sphinx
+fsspec==2025.12.0
+    # via dask
 furo==2025.12.19
 geopandas==1.1.1
     # via crace
@@ -49,14 +63,24 @@ idna==3.11
     # via requests
 imagesize==1.4.1
     # via sphinx
+importlib-metadata==8.7.1 ; python_full_version < '3.12'
+    # via dask
 iniconfig==2.3.0
     # via pytest
 jinja2==3.1.6
-    # via sphinx
+    # via
+    #   distributed
+    #   sphinx
 llvmlite==0.45.1
     # via numba
+locket==1.0.0
+    # via
+    #   distributed
+    #   partd
 markupsafe==3.0.3
     # via jinja2
+msgpack==1.1.2
+    # via distributed
 numba==0.62.1
     # via sparse
 numpy==2.3.5
@@ -77,6 +101,8 @@ odc-geo==0.4.10
     # via crace
 packaging==25.0
     # via
+    #   dask
+    #   distributed
     #   geopandas
     #   pyogrio
     #   pytest
@@ -87,8 +113,12 @@ pandas==2.3.3
     # via
     #   geopandas
     #   xarray
+partd==1.4.2
+    # via dask
 pluggy==1.6.0
     # via pytest
+psutil==7.1.3
+    # via distributed
 pygments==2.19.2
     # via
     #   accessible-pygments
@@ -109,6 +139,10 @@ python-dateutil==2.9.0.post0
     # via pandas
 pytz==2025.2
     # via pandas
+pyyaml==6.0.3
+    # via
+    #   dask
+    #   distributed
 rasterio==1.4.3
     # via rioxarray
 requests==2.32.5
@@ -128,7 +162,9 @@ six==1.17.0
 snowballstemmer==3.0.1
     # via sphinx
 sortedcontainers==2.4.0
-    # via hypothesis
+    # via
+    #   distributed
+    #   hypothesis
 soupsieve==2.8
     # via beautifulsoup4
 sparse==0.17.0
@@ -155,13 +191,28 @@ sphinxcontrib-qthelp==2.0.0
     # via sphinx
 sphinxcontrib-serializinghtml==2.0.0
     # via sphinx
+tblib==3.2.2
+    # via distributed
+toolz==1.1.0
+    # via
+    #   dask
+    #   distributed
+    #   partd
+tornado==6.5.2
+    # via distributed
 typing-extensions==4.15.0
     # via beautifulsoup4
 tzdata==2025.2
     # via pandas
 urllib3==2.5.0
-    # via requests
+    # via
+    #   distributed
+    #   requests
 xarray==2025.11.0
     # via
     #   crace
     #   rioxarray
+zict==3.0.0
+    # via distributed
+zipp==3.23.0 ; python_full_version < '3.12'
+    # via importlib-metadata
