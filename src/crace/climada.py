@@ -7,7 +7,7 @@ xarray-based geospatial and analytical workflows.
 
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 import numpy as np
 import odc.geo  # noqa: F401
@@ -17,11 +17,9 @@ import sparse as sp
 import xarray as xr
 from xarray.core import dtypes as xrdtypes
 
-try:
+if TYPE_CHECKING:
     from climada.entity import Exposures
     from climada.hazard import Hazard
-except ImportError as err:
-    raise RuntimeError("Please install CLIMADA for using this module!") from err
 
 from .sparse import zero_to_nan
 from .types import SPATIAL_DIM, DatasetOrArray
