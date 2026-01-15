@@ -7,7 +7,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "CRACE"
-copyright = "2025, Lukas Riedel"
+copyright = "2025, ETH Zurich"
 author = "Lukas Riedel"
 
 # -- General configuration ---------------------------------------------------
@@ -16,6 +16,7 @@ author = "Lukas Riedel"
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "sphinx.ext.intersphinx",
 ]
 
 templates_path = ["_templates"]
@@ -23,7 +24,30 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # Autodoc
 autodoc_mock_imports = ["climada"]
+autodoc_typehints = "description"
 
+# Napoleon
+napoleon_use_param = True
+napoleon_preprocess_types = True
+napoleon_type_aliases = {
+    "DatasetOrArray": ":py:class:`xarray.Dataset` | :py:class:`xarray.DataArray`",
+    "climada.hazard.Hazard": ":py:class:`~climada.hazard.base.Hazard`",
+    "climada.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",
+    "climada.entity.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",
+}
+autodoc_type_aliases = napoleon_type_aliases
+
+# Typehints
+# typehints_fully_qualified = False
+# typehints_defaults = "braces-after"
+
+# Intersphinx
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "xarray": ("https://docs.xarray.dev/en/stable/", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "climada": ("https://climada-python.readthedocs.io/en/stable/", None),
+}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
