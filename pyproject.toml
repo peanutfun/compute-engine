@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "dask[distributed]>=2025.12.0",
     "geopandas>=1.1.1",
+    "llvmlite>=0.43.0",  # Fix uv resolution bug, see https://github.com/astral-sh/uv/issues/9413
     "numpy>=2.3.5",
     "odc-geo>=0.4.10",
     "rioxarray>=0.19.0",
@@ -16,6 +17,9 @@ dependencies = [
 dev = [
     "hypothesis[numpy]>=6.150.0",
     "pytest>=9.0.1",
+    {include-group = "doc"},
+    {include-group = "interactive"},
+    {include-group = "type"},
 ]
 doc = [
     "furo>=2025.12.19",
@@ -23,6 +27,11 @@ doc = [
 ]
 interactive = [
     "notebook>=7.5.0",
+]
+type = [
+    "mypy>=1.19.1",
+    "pandas-stubs>=2.3.3.260113",
+    "types-geopandas>=1.1.2.20251224",
 ]
 
 [build-system]
