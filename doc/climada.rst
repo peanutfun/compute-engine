@@ -1,3 +1,5 @@
+.. _climada:
+
 CLIMADA Interoperability
 ========================
 

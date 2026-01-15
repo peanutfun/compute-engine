@@ -47,6 +47,8 @@ intersphinx_mapping = {
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "numpy": ("https://numpy.org/doc/stable", None),
     "climada": ("https://climada-python.readthedocs.io/en/stable/", None),
+    "rioxarray": ("https://corteva.github.io/rioxarray/html/", None),
+    "odcgeo": ("https://odc-geo.readthedocs.io/en/stable/", None),
 }
 
 # -- Options for HTML output -------------------------------------------------

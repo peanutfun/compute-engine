@@ -6,21 +6,19 @@
 CRACE documentation
 ===================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+      Climate Risk Assessment Compute Engine
 
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
    :hidden:
 
+   data-io
    climada
 
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
