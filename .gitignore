@@ -222,5 +222,8 @@ __marimo__/
 /data
 /src/climadace/data/
 
+# Generated docs
+doc/api/generated
+
 # macOS
 *.DS_Store
