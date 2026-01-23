@@ -18,6 +18,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosummary",
+    "sphinx_remove_toctrees",
 ]
 
 templates_path = ["_templates"]
@@ -35,6 +36,8 @@ napoleon_type_aliases = {
     "climada.hazard.Hazard": ":py:class:`~climada.hazard.base.Hazard`",
     "climada.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",
     "climada.entity.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",
+    "ArrayLike": "py:class:`numpy.typing.ArrayLike`",
+    "numpy.ArrayLike": "py:class:`numpy.typing.ArrayLike`",
 }
 autodoc_type_aliases = napoleon_type_aliases
 
@@ -51,6 +54,9 @@ intersphinx_mapping = {
     "rioxarray": ("https://corteva.github.io/rioxarray/html/", None),
     "odcgeo": ("https://odc-geo.readthedocs.io/en/stable/", None),
 }
+
+# Remove from toctree
+remove_from_toctrees = ["api/generated/*", "generated/*"]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

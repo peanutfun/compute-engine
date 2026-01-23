@@ -10,20 +10,22 @@ CRACE documentation
 
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :hidden:
    :caption: User Guide
 
+   basics
    data-io
+   align
+   tree
    climada
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :hidden:
    :caption: API
 
-   api/io
-   api/climada
+   api
 
 
 Indices and tables

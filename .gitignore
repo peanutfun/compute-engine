@@ -223,6 +223,7 @@ __marimo__/
 /src/climadace/data/
 
 # Generated docs
+doc/generated
 doc/api/generated
 
 # macOS

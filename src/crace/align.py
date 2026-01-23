@@ -142,7 +142,56 @@ def align(
     force_reproject: bool = False,
     align_chunks: bool = False,
 ) -> tuple[xr.Dataset, xr.Dataset]:
-    """Align hazard and exposure with default settings"""
+    """Align hazard and exposure datasets for impact calculation.
+
+    To ensure alignment in the xarray sense, the spatial dimensions of the hazard
+    dataset will be renamed to match those of the exposure dataset. If both datasets
+    contain only a single data variable array, this method will ensure that they have
+    the same name, defaulting to the name of the exposure data variable or the name
+    ``"exposure"``, if the input arrays are unnamed.
+
+    Parameters
+    ----------
+    hazard
+        Geospatial data on the hazard intensity. :py:class:`xarray.DataArray` objects
+        will be promoted to :py:class:`xarray.Dataset`.
+    exposure
+        Geospatial data of exposure. :py:class:`xarray.DataArray` objects
+        will be promoted to :py:class:`xarray.Dataset`.
+    method_nonspatial
+        Alignment method for non-spatial dimensions. Choose a ``method`` setting of
+        :py:meth:`~xarray.Dataset.interp`. For ``"nearest"`` (default), the dimension
+        coordinates are reindexed with :py:meth:`~xarray.Dataset.reindex`.
+    method_spatial
+        Alignment method for spatial dimensions (as identified by
+        :py:attr:`~odc.geo.xr.ODCExtension.spatial_dims`). Choose a ``resampling``
+        parameter from :py:meth:`~odc.geo.xr.ODCExtensionDa.reproject`. For
+        ``"nearest"`` (default), the dimension coordinates are reindexed with
+        :py:meth:`~xarray.Dataset.reindex`, unless ``force_reproject=True``.
+    force_reproject
+        If ``True``, always use :py:meth:`~odc.geo.xr.ODCExtensionDa.reproject` for
+        aligning spatial coordinates. If ``False`` (default), ``nearest`` interpolation
+        is done by reindexing.
+    align_chunks
+        If ``True``, rechunk the hazard dataset to align its chunks with the exposure
+        dataset.
+
+    Returns
+    -------
+    xarray.Dataset
+        Aligned hazard dataset
+    xarray.Dataset
+        Aligned exposure dataset
+
+    See Also
+    --------
+    xarray.Dataset.reindex
+        Method for ``"nearest"`` alignment for spatial and non-spatial coordinates
+    xarray.Dataset.interp
+        Method for other alignments of non-spatial coordinates
+    odc.geo.xr.ODCExtensionDa.reproject
+        Method for other spatial alignments
+    """
     aligner = Aligner(
         hazard=hazard,
         exposure=exposure,
@@ -211,7 +260,7 @@ class Aligner:
 
     @staticmethod
     def align_names(
-        arr1: DatasetOrArray, arr2: DatasetOrArray, name_fallback
+        arr1: DatasetOrArray, arr2: DatasetOrArray, name_fallback: str
     ) -> tuple[DatasetOrArray, DatasetOrArray]:
         name = name_fallback
         if isinstance(arr1, xr.DataArray):

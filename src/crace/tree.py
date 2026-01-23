@@ -72,19 +72,53 @@ def mask_dataset(
     all_touched: bool = True,
     invert: bool = False,
 ) -> DatasetOrArray:
-    """Mask data using a geometry and possibly drop coordinates without values
+    """Mask data using a geometry and optionally clip the data to the mask.
 
-    See https://odc-geo.readthedocs.io/en/latest/_api/odc.geo.xr.ODCExtension.mask.html#odc.geo.xr.ODCExtension.mask"""
+    Apply the ``geometry`` as mask. Outside of the mask, the dataset values will be set
+    to ``NaN``.
+
+    Parameters
+    ----------
+    data : DatasetOrArray
+        The dataset onto which a mask will be applied. The original dataset will not
+        be modified.
+    geometry
+        The geometry to use as a mask. The geometry will be rasterized at the resolution
+        of the dataset.
+    all_touched
+        If ``True`` (default), the mask will be applied to any pixel that touches the
+        rasterized geometry. If ``False``, only pixels whose center is within the
+        geometry will be selected. See :py:meth:`~odc.geo.xr.ODCExtension.mask` for
+        details.
+    invert
+        If ``True``, invert the mask and select all pixels *outside* the geometry.
+        Default: ``False``.
+
+    Returns
+    -------
+    DatasetOrArray
+        A shallow copy of ``data``, with the appropriate values masked.
+
+    See Also
+    --------
+    odc.geo.xr.ODCExtension.mask
+        The method used for masking
+    """
+
+    def maybe_invert(min_max: tuple[float, float], res: float):
+        if res < 0:
+            return tuple(reversed(min_max))
+        return min_max
+
     if prune:
         res_x, res_y = data.odc.geobox.resolution.xy
-        minx, miny, maxx, maxy = geometry.boundingbox.buffered(
+        x_min, y_min, x_max, y_max = geometry.boundingbox.buffered(
             xbuff=abs(res_x), ybuff=abs(res_y)
         )
-        if res_y < 0:
-            # y-coordinates are inverted
-            miny, maxy = maxy, miny
+        y_min, y_max = maybe_invert((y_min, y_max), res_y)
+        x_min, x_max = maybe_invert((x_min, x_max), res_x)
         data = data.sel(
-            {data.rio.x_dim: slice(minx, maxx), data.rio.y_dim: slice(miny, maxy)}
+            {data.rio.x_dim: slice(x_min, x_max), data.rio.y_dim: slice(y_min, y_max)}
         )
     data = data.odc.mask(geometry, invert=invert, all_touched=all_touched)
     return data
@@ -255,6 +289,7 @@ class TreeSplitter:
         self.tree.children = {child.name: child for child in self.child_nodes}
 
 
+# TODO: Align all first!
 def merge_by_combine(dset: xr.Dataset, *dsets: xr.Dataset) -> xr.Dataset:
     """Combine all datasets to a new one. Assume that there are only NaN overlaps"""
     if not dsets:
@@ -291,9 +326,10 @@ def merge_tree_dset(
 ) -> xr.DataTree | None:
     """Merge the tree leaf datasets into the root node
 
-    Todo
-    ----
-    Maybe we can just call combine_by_coords on all leaves?
+    Notes
+    -----
+    TODO:
+        Maybe we can just call combine_by_coords on all leaves?
     """
     if not inplace:
         root = root.copy()  # Shallow copy
