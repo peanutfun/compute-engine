@@ -15,9 +15,9 @@ author = "Lukas Riedel"
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    "sphinx.ext.autosummary",
     "sphinx_remove_toctrees",
 ]
 
@@ -31,6 +31,8 @@ autodoc_typehints = "description"
 # Napoleon
 napoleon_use_param = True
 napoleon_preprocess_types = True
+napoleon_use_rtype = True
+
 napoleon_type_aliases = {
     "DatasetOrArray": ":py:class:`xarray.Dataset` | :py:class:`xarray.DataArray`",
     "climada.hazard.Hazard": ":py:class:`~climada.hazard.base.Hazard`",
@@ -53,6 +55,8 @@ intersphinx_mapping = {
     "climada": ("https://climada-python.readthedocs.io/en/stable/", None),
     "rioxarray": ("https://corteva.github.io/rioxarray/html/", None),
     "odcgeo": ("https://odc-geo.readthedocs.io/en/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+    "geopandas": ("https://geopandas.org/en/stable/", None),
 }
 
 # Remove from toctree

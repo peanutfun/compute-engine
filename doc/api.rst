@@ -51,6 +51,15 @@ Impact Functions
     impact_function
 
 
+Engine
+------
+
+.. toctree::
+    :maxdepth: 1
+
+    api/engine
+
+
 Reductions
 ----------
 
@@ -59,17 +68,6 @@ Reductions
 
     at_event
     average_event_impact
-
-
-Engine
-------
-
-.. autosummary::
-    :toctree: generated/
-    :recursive:
-
-    Engine
-
 
 .. _api-climada:
 

@@ -96,7 +96,7 @@ def mask_dataset(
 
     Returns
     -------
-    DatasetOrArray
+    data : DatasetOrArray
         A shallow copy of ``data``, with the appropriate values masked.
 
     See Also
@@ -124,15 +124,83 @@ def mask_dataset(
     return data
 
 
+@overload
+def split_from_groupby_bins(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[False] = ...,
+    **groupby_bins_kwargs,
+) -> xr.DataTree: ...
+
+
+@overload
+def split_from_groupby_bins(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[True] = ...,
+    **groupby_bins_kwargs,
+) -> None: ...
+
+
 def split_from_groupby_bins(
     node: xr.Dataset | xr.DataTree,
     prune_node: bool = True,
     inplace: bool = False,
     **groupby_bins_kwargs,
-):
+) -> xr.DataTree | None:
+    """Split a data tree node using ``groupby_bins``
+
+    The ``node`` dataset will be split using :py:meth:`~xarray.Dataset.groupby_bins`,
+    and the resulting grouped datasets will be placed into child nodes. The child
+    :py:attr:`~xarray.DataTree.name` will be the :py:class:`str` representation of the
+    respective group label.
+
+    Parameters
+    ----------
+    node
+        The tree node to split. If a :py:class:`~xarray.Dataset` is passed, it is first
+        placed into a new tree node.
+    prune_node
+        If ``True`` (default), the ``node`` dataset is removed before attaching the
+        child nodes.
+    inplace
+        If ``True``, attach the child nodes to ``node``. If ``False`` (default), create
+        a shallow copy of ``node`` to attach the child nodes to and return it.
+    groupby_bins_kwargs
+        Keyword arguments passed to :py:meth:`~xarray.Dataset.groupby_bins`.
+
+    Returns
+    -------
+    split_node : xarray.DataTree
+        A shallow copy of ``node`` with split child nodes attached.
+    None
+        If ``inplace=True``.
+
+    See Also
+    --------
+    ~crace.split_from_groupby
+    """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_groupby_bins(**groupby_bins_kwargs)
     return splitter.result(inplace=inplace, prune_node=prune_node)
+
+
+@overload
+def split_from_groupby(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[False] = ...,
+    **groupby_bins_kwargs,
+) -> xr.DataTree: ...
+
+
+@overload
+def split_from_groupby(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[True] = ...,
+    **groupby_bins_kwargs,
+) -> None: ...
 
 
 def split_from_groupby(
@@ -141,10 +209,65 @@ def split_from_groupby(
     inplace: bool = False,
     **groupby_kwargs,
 ) -> xr.DataTree | None:
-    """Split using groupby"""
+    """Split a data tree node using ``groupby``
+
+    The ``node`` dataset will be split using :py:meth:`~xarray.Dataset.groupby`,
+    and the resulting grouped datasets will be placed into child nodes. The child
+    :py:attr:`~xarray.DataTree.name` will be the :py:class:`str` representation of the
+    respective group label.
+
+    Parameters
+    ----------
+    node
+        The tree node to split. If a :py:class:`~xarray.Dataset` is passed, it is first
+        placed into a new tree node.
+    prune_node
+        If ``True`` (default), the ``node`` dataset is removed before attaching the
+        child nodes.
+    inplace
+        If ``True``, attach the child nodes to ``node``. If ``False`` (default), create
+        a shallow copy of ``node`` to attach the child nodes to and return it.
+    groupby_kwargs
+        Keyword arguments passed to :py:meth:`~xarray.Dataset.groupby`.
+
+    Returns
+    -------
+    split_node : xarray.DataTree
+        A shallow copy of ``node`` with split child nodes attached.
+    None
+        If ``inplace=True``.
+    """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_groupby(**groupby_kwargs)
     return splitter.result(inplace=inplace, prune_node=prune_node)
+
+
+@overload
+def split_from_geo(
+    node: xr.Dataset | xr.DataTree,
+    gdf: gpd.GeoDataFrame,
+    *,
+    high_precision: bool = ...,
+    keep_exterior: bool = ...,
+    prune_node: bool = ...,
+    inplace: Literal[False] = ...,
+    groupby_kws: Mapping | None = ...,
+    mask_kws: Mapping | None = ...,
+) -> xr.DataTree: ...
+
+
+@overload
+def split_from_geo(
+    node: xr.Dataset | xr.DataTree,
+    gdf: gpd.GeoDataFrame,
+    *,
+    high_precision: bool = ...,
+    keep_exterior: bool = ...,
+    prune_node: bool = ...,
+    inplace: Literal[True] = ...,
+    groupby_kws: Mapping | None = ...,
+    mask_kws: Mapping | None = ...,
+) -> None: ...
 
 
 # TODO: prune mask
@@ -159,7 +282,73 @@ def split_from_geo(
     groupby_kws: Mapping | None = None,
     mask_kws: Mapping | None = None,
 ) -> xr.DataTree | None:
-    """Split a dataset into subsets and return them as tree leaves"""
+    """Split a data tree node based on a ``GeoDataFrame``.
+
+    The ``gdf`` will be grouped by :py:meth:`~pandas.DataFrame.groupby`, and the union
+    of the resulting grouped geometries will be used to mask the original dataset and
+    create a child node/dataset for each group. The child
+    :py:attr:`~xarray.DataTree.name` will be the :py:class:`str` representation of the
+    respective group label.
+
+    If ``gdf`` contains exactly one other column apart from the active geometry column,
+    this column name will be used as ``by`` parameter in the
+    :py:meth:`~pandas.DataFrame.groupby` operation. Otherwise, ``by`` needs to be
+    specified via ``groupby_kws``.
+
+    Note
+    ----
+    ``gdf`` may contain geometries in a different coordinate reference system (CRS) than
+    the data in ``node``. In this case, the geometries are transferred into the ``node``
+    CRS. As such operations in GeoPandas are pointwise, this may be an imprecise
+    operation which distorts polygonal shapes. If this is a concern, set
+    ``high_precision=True``, in which case all line shapes are split into segments in
+    the resolution of the ``node`` before the CRS transform. This process may require
+    more memory and compute time.
+
+    Parameters
+    ----------
+    node
+        The tree node to split. If a :py:class:`~xarray.Dataset` is passed, it is first
+        placed into a new tree node.
+    gdf
+        Data frame with active geometry column and at least one other column for
+        grouping.
+    high_precision
+        If ``True``, transform each geometry with the resolution of the ``node``
+        dataset. If ``False`` (default), only transform the original points of the
+        ``gdf`` geometries.
+    keep_exterior
+        If ``True``, add another child node that contains all pixels of ``node`` which
+        do not lie in any of the ``gdf`` geometries.
+    prune_node
+        If ``True`` (default), the ``node`` dataset is removed before attaching the
+        child nodes.
+    inplace
+        If ``True``, attach the child nodes to ``node``. If ``False`` (default), create
+        a shallow copy of ``node`` to attach the child nodes to and return it.
+    groupby_kws
+        Keyword arguments to :py:meth:`pandas.DataFrame.groupby` called on ``gdf``.
+        If ``None`` (default), this method can infer the ``by`` argument if only one
+        data frame column apart from the geometry column is present.
+    mask_kws
+        Keyword arguments to :py:func:`mask_dataset`, which is called on ``node`` with
+        the union of geometries for each group. Default values: ``all_touched: False``.
+
+    Returns
+    -------
+    split_node : xarray.DataTree
+        A shallow copy of ``node`` with split child nodes attached.
+    None
+        If ``inplace=True``.
+
+    See Also
+    --------
+    ~crace.split_from_groupby, ~crace.split_from_groupby_bins
+    geopandas.GeoDataFrame.to_crs
+        Geometry transformation for ``high_precison=False``
+    odc.geo.geom.Geometry.to_crs
+        Geometry transformation for ``high_precison=True``
+    """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_dataframe(
         gdf=gdf,
@@ -328,8 +517,7 @@ def merge_tree_dset(
 
     Notes
     -----
-    TODO:
-        Maybe we can just call combine_by_coords on all leaves?
+    - Maybe we can just call combine_by_coords on all leaves?
     """
     if not inplace:
         root = root.copy()  # Shallow copy

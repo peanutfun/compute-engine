@@ -119,6 +119,34 @@ ImpactFuncSpec = ImpactFuncSpecSingle | Sequence[ImpactFuncSpecSingle]
 
 # TODO: Add new engine for unsequa/sampling
 class Engine:
+    """Facility for computing impacts from hazard, exposure, and vulnerability.
+
+    This assumes that hazard and exposure have been aligned.
+
+    Parameters
+    ----------
+    hazard
+        The hazard dataset. Will be split into a data tree that is isomorphic to the
+        exposure.
+    exposure
+        The exposure dataset or data tree. If it is a dataset, it will be promoted
+        to a data tree with a single node.
+    impf_map : ImpactFuncSpec
+        The impact function definition. If it is a mapping, it must be compatible
+        with the exposure data tree. If it is a single function, this function
+        applied to all nodes of the data tree.
+
+    Attributes
+    ----------
+    hazard : xarray.DataTree
+        The hazard intensity data. Isomorphic to :py:attr:`exposure`.
+    exposure : xarray.DataTree
+        The exposure value data. Isomorphic to :py:attr:`hazard`.
+    impf_map : ImpactFuncSpec
+        The impact function definition. Modifying this attribute will reset the stored
+        impact. Calling :py:meth:`impact` will then cause the impact to be recomputed.
+    """
+
     def __init__(
         self,
         hazard: xr.Dataset,
@@ -142,6 +170,7 @@ class Engine:
         self.hazard = tree_divide(self.hazard, self.exposure)
 
         self.impf_map = impf_map
+        self._impact = xr.DataTree()
         self._aggregates = xr.DataTree()
 
     def _maybe_cache(self, data: AnyXarray, path: Path):
@@ -150,6 +179,11 @@ class Engine:
 
     @property
     def impf_map(self) -> ImpactFuncSpec:
+        """The impact function definition.
+
+        Modifying this attribute will reset the stored impact. Calling :py:meth:`impact`
+        will then cause the impact to be recomputed.
+        """
         return self._impf_map
 
     @impf_map.setter
@@ -192,6 +226,8 @@ class Engine:
         #     }
         # )
 
+    # TODO: .sel will probably not work as expected because the tree nodes do not share
+    #       coordinates! Need to call .sel on each dataset individually.
     def _sample_impact(self, samples: pd.DataFrame) -> xr.DataTree:
         impact_samples = (
             self._impact.sel(**sample) for _, sample in samples.iterrows()
@@ -208,6 +244,39 @@ class Engine:
         samples: pd.DataFrame | None = None,
         compute: bool = False,
     ) -> xr.DataTree:
+        """Compute and return the impact.
+
+        If an impact was already computed, and no other parameters are given, the
+        existing impact is returned. Otherwise, the impact is re-computed.
+
+        Notes
+        -----
+        If either :py:attr:`hazard` or :py:attr:`exposure` contain chunked data, the
+        returned impact will be chunked. By default, the dask arrays will **not** be
+        computed. Use ``compute`` to control this behavior or call
+        :py:meth:`xarray.DataTree.compute` on the retured tree.
+
+        Parameters
+        ----------
+        impf_map
+            The impact function specification. If not ``None``, the impact will be
+            recomputed.
+        samples
+            Specifications for subsampling the impact data structure. Each row of the
+            data frame will be interpreted as a sample. Each column name and associated
+            value will be passed to :py:meth:`xarray.Dataset.sel` as keyword arguments.
+            The values of the index will be used to concatenate the resulting selection
+            along a new coordinate called ``"sample"``.
+        compute
+            If ``True``, call :py:meth:`xarray.DataTree.compute` before returning, but
+            only if the data is chunked.
+
+        Returns
+        -------
+        impact : xarray.DataTree
+            The impact calculated from the input hazard, exposure, and impact functions.
+            The tree is isomorphic to :py:attr:`exposure`.
+        """
         if impf_map is not None:
             self.impf_map = impf_map
         if tree_is_empty(self._impact):

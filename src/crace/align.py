@@ -144,6 +144,12 @@ def align(
 ) -> tuple[xr.Dataset, xr.Dataset]:
     """Align hazard and exposure datasets for impact calculation.
 
+    As a default for ``"nearest"`` methods, simply
+    :py:meth:`~xarray.Dataset.reindex` the coordinates (nearest-neighbor interpolation).
+    Otherwise, use :py:meth:`~odc.geo.xr.ODCExtensionDa.reproject` for the spatial
+    dimensions and :py:meth:`~xarray.Dataset.interp` for non-spatial dimensions that
+    occur in both datasets.
+
     To ensure alignment in the xarray sense, the spatial dimensions of the hazard
     dataset will be renamed to match those of the exposure dataset. If both datasets
     contain only a single data variable array, this method will ensure that they have
@@ -167,20 +173,21 @@ def align(
         :py:attr:`~odc.geo.xr.ODCExtension.spatial_dims`). Choose a ``resampling``
         parameter from :py:meth:`~odc.geo.xr.ODCExtensionDa.reproject`. For
         ``"nearest"`` (default), the dimension coordinates are reindexed with
-        :py:meth:`~xarray.Dataset.reindex`, unless ``force_reproject=True``.
+        :py:meth:`~xarray.Dataset.reindex`, unless ``force_reproject=True``. In any
+        case, ``"nearest"`` effectively performs nearest-neighbor interpolation.
     force_reproject
         If ``True``, always use :py:meth:`~odc.geo.xr.ODCExtensionDa.reproject` for
         aligning spatial coordinates. If ``False`` (default), ``nearest`` interpolation
-        is done by reindexing.
+        is done via :py:meth:`~xarray.Dataset.reindex`.
     align_chunks
         If ``True``, rechunk the hazard dataset to align its chunks with the exposure
         dataset.
 
     Returns
     -------
-    xarray.Dataset
+    hazard: xarray.Dataset
         Aligned hazard dataset
-    xarray.Dataset
+    exposure: xarray.Dataset
         Aligned exposure dataset
 
     See Also
