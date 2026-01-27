@@ -608,6 +608,47 @@ def merge_tree_dset(
 def map_impact_function(
     tree: xr.DataTree, func_map: FunctionMap | DatasetFunction
 ) -> xr.DataTree:
+    """Apply an impact function map onto a data tree.
+
+    If ``func_map`` is a single function/callable, it will be applied onto all nodes in
+    ``tree``.
+
+    If it is a mapping, the an algorithm identifies which function to apply for any node
+    in ``tree``. It performs the following checks, using the first match in this order:
+
+    - Match the full node path to the ``func_map`` key.
+    - Match the node name to the ``func_map`` key.
+    - Try the above steps (in order) for the parent node, if it exists.
+    - If the node is a leaf, match a key with the leaf node type.
+    - Use the default key, if it exists.
+
+    If no match was possible, no function will be applied to the node, and the returned
+    tree will have a node *without dataset* at this path.
+
+    The values of ``func_map`` can be either callables to apply to a dataset, or
+    strings. In the latter case, these strings will be used to identify functions stored
+    in the impact function registry.
+
+    Parameters
+    ----------
+    tree
+        The data tree to apply the function (map) to.
+    func_map
+        The function or function map to apply to the data tree. If a mapping, the keys
+        must identify node names or paths to apply the function to, and the values must
+        be functions or names of functions registered.
+
+    Returns
+    -------
+    tree_applied
+        A tree homomorphic to ``tree``, whose nodes contain datasets transformed by
+        ``func_map``.
+
+    Raises
+    ------
+    ValueError
+        If a mapped function name is not registered.
+    """
     mapper = TreeMapper(tree=tree, func_map=func_map, registry=REGISTRY)
     mapper.apply(use_parent=True, use_merge=False)
     return mapper.result()
