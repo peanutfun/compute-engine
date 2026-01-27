@@ -19,6 +19,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
     "sphinx_remove_toctrees",
+    "myst_nb",
 ]
 
 templates_path = ["_templates"]

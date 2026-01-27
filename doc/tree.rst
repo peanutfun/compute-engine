@@ -1,3 +1,5 @@
+.. _data-tree:
+
 ====================
 Data Tree Operations
 ====================

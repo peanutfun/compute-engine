@@ -18,6 +18,7 @@ CRACE documentation
    data-io
    align
    tree
+   function-maps
    climada
 
 .. toctree::
