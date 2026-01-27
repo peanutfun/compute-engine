@@ -15,5 +15,5 @@ Workflow
 
 #. :ref:`Loading <data-io>` or generating hazard and exposure datasets.
 #. :ref:`Aligning <data-align>` hazard and exposure datasets.
-#. *Optional:* Generating a data tree structure for granular assignment of impact functions and reductions.
+#. *Optional:* Generating a :ref:`data tree structure <data-tree>` for granular assignment of :ref:`impact functions and reductions <function-maps>`.
 #. Computing the impact and applying reduction operations.

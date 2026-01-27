@@ -640,8 +640,8 @@ def map_impact_function(
 
     Returns
     -------
-    tree_applied
-        A tree homomorphic to ``tree``, whose nodes contain datasets transformed by
+    tree_applied : xarray.DataTree
+        A tree isomorphic to ``tree``, whose nodes contain datasets transformed by
         ``func_map``.
 
     Raises

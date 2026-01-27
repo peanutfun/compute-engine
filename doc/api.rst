@@ -42,13 +42,14 @@ Data Tree Manipulation
     merge_tree_dset
 
 
-Impact Functions
-----------------
+Data Tree Modification
+----------------------
 
 .. autosummary::
     :toctree: generated/
 
     impact_function
+    map_impact_function
 
 
 Engine
