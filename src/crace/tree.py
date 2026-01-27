@@ -178,7 +178,9 @@ def split_from_groupby_bins(
 
     See Also
     --------
-    ~crace.split_from_groupby
+    ~crace.split_from_groupby, ~crace.split_from_geo
+    ~crace.merge_tree_dset
+        Inverse operation for merging child datasets into a common root.
     """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_groupby_bins(**groupby_bins_kwargs)
@@ -236,6 +238,12 @@ def split_from_groupby(
         A shallow copy of ``node`` with split child nodes attached.
     None
         If ``inplace=True``.
+
+    See Also
+    --------
+    ~crace.split_from_groupby_bins, ~crace.split_from_geo
+    ~crace.merge_tree_dset
+        Inverse operation for merging child datasets into a common root.
     """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_groupby(**groupby_kwargs)
@@ -285,15 +293,19 @@ def split_from_geo(
     """Split a data tree node based on a ``GeoDataFrame``.
 
     The ``gdf`` will be grouped by :py:meth:`~pandas.DataFrame.groupby`, and the union
-    of the resulting grouped geometries will be used to mask the original dataset and
-    create a child node/dataset for each group. The child
-    :py:attr:`~xarray.DataTree.name` will be the :py:class:`str` representation of the
-    respective group label.
+    of the resulting grouped geometries will be used to mask (see
+    :py:func:`mask_dataset`) the original dataset and create a child node/dataset for
+    each group. The child :py:attr:`~xarray.DataTree.name` will be the :py:class:`str`
+    representation of the respective group label.
 
     If ``gdf`` contains exactly one other column apart from the active geometry column,
     this column name will be used as ``by`` parameter in the
     :py:meth:`~pandas.DataFrame.groupby` operation. Otherwise, ``by`` needs to be
     specified via ``groupby_kws``.
+
+    Important
+    ---------
+    Groups whose geometries do not intersect with the ``node`` dataset will be skipped.
 
     Note
     ----
@@ -341,9 +353,19 @@ def split_from_geo(
     None
         If ``inplace=True``.
 
+    Raises
+    ------
+    ValueError
+        If ``groupby_kws`` is ``None`` (default), and ``gdf`` has more than two columns.
+
     See Also
     --------
     ~crace.split_from_groupby, ~crace.split_from_groupby_bins
+    ~crace.mask_dataset
+        Function used for masking the ``node`` data for each union of grouped
+        geometries.
+    ~crace.merge_tree_dset
+        Inverse operation for merging child datasets into a common root.
     geopandas.GeoDataFrame.to_crs
         Geometry transformation for ``high_precison=False``
     odc.geo.geom.Geometry.to_crs
@@ -507,17 +529,55 @@ def merge_tree_dset(
 
 
 # TODO: Option: Use closest dsets (need not be hollow)
+# TODO: is_hollow implies 'not root.has_data' ??
 def merge_tree_dset(
     root: xr.DataTree,
     drop_subtree: bool = True,
     overwrite: bool = False,
     inplace: bool = False,
 ) -> xr.DataTree | None:
-    """Merge the tree leaf datasets into the root node
+    """Merge the tree leaf datasets into the root node.
 
-    Notes
-    -----
-    - Maybe we can just call combine_by_coords on all leaves?
+    Recursively collect the leaf child nodes of ``root`` and merge the data into a new
+    dataset with :py:meth:`~xarray.Dataset.combine_first`. Then place this dataset into
+    the root node and remove the node children.
+
+    The resulting dataset will be the "outer" join of all leaf dataset
+    dimensions/coordinates and merge the data with :py:meth:`~xarray.Dataset.fillna`
+    operations.
+
+    Attention
+    ---------
+    This only works correctly if the leaf datasets only overlap with NaN (no data)
+    values. If two or more datasets contain data at the same coordinates, data will be
+    lost by this operation!
+
+    Parameters
+    ----------
+    root
+        The root node whose child datasets should be merged. Must be hollow (only leaf
+        nodes may contain data).
+    drop_subtree
+        If ``True`` (default), remove the child nodes from ``root`` after merging.
+    overwrite
+        If ``True``, overwrite any existing dataset in ``root``. Default: ``False``.
+    inplace
+        If ``False`` (default), create a shallow copy of ``root`` for merging and return
+        it. ``root`` will not be modified.
+
+    Returns
+    -------
+    root_merged : xarray.DataTree
+        A shallow copy of ``root`` whose dataset is a combination of all child datasets.
+    None
+        If ``inplace=True``.
+
+    Raises
+    ------
+    ValueError
+        If :py:attr:`~xarray.DataTree.is_hollow` returns ``False`` for ``root``.
+    ValueError
+        If ``root`` contains a dataset and ``overwrite=False``.
     """
     if not inplace:
         root = root.copy()  # Shallow copy
