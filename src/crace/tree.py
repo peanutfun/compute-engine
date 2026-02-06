@@ -181,6 +181,8 @@ def split_from_groupby_bins(
     ~crace.split_from_groupby, ~crace.split_from_geo
     ~crace.merge_tree_dset
         Inverse operation for merging child datasets into a common root.
+    crace.tree.TreeSplitter
+        Internal class handling the splitting.
     """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_groupby_bins(**groupby_bins_kwargs)
@@ -244,6 +246,8 @@ def split_from_groupby(
     ~crace.split_from_groupby_bins, ~crace.split_from_geo
     ~crace.merge_tree_dset
         Inverse operation for merging child datasets into a common root.
+    crace.tree.TreeSplitter
+        Internal class handling the splitting.
     """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_groupby(**groupby_kwargs)
@@ -370,6 +374,8 @@ def split_from_geo(
         Geometry transformation for ``high_precison=False``
     odc.geo.geom.Geometry.to_crs
         Geometry transformation for ``high_precison=True``
+    crace.tree.TreeSplitter
+        Internal class handling the splitting.
     """
     splitter = TreeSplitter(tree=node)
     splitter.split_from_dataframe(
@@ -383,6 +389,34 @@ def split_from_geo(
 
 
 class TreeSplitter:
+    """Class that manages the split algorithms
+
+    Use as follows:
+
+    - Initialize with a :py:class:`~xarray.DataTree` or :py:class:`~xarray.Dataset`
+      instance (the latter will be promoted to a tree node).
+    - Call one of the ``split_`` methods.
+    - Retrieve :py:meth:`result`.
+
+    Attention
+    ---------
+    This class is not intended for external use!
+
+    Parameters
+    ----------
+    tree
+        The node to split. If an :py:class:`~xarray.Dataset`, it will be promoted to
+        a root :py:class:`~xarray.DataTree`.
+
+    Attributes
+    ----------
+    tree : xarray.DataTree
+        The tree to split.
+    child_nodes : dict[str, xarray.DataTree]
+        The child paths and nodes received by splitting.
+
+    """
+
     def __init__(self, tree: xr.DataTree | xr.Dataset):
         if not isinstance(tree, xr.DataTree):
             tree = xr.DataTree(dataset=tree)
@@ -397,6 +431,7 @@ class TreeSplitter:
         groupby_kws: Mapping[str, Any] | None = None,
         mask_kws: Mapping[str, Any] | None = None,
     ):
+        """Split :py:attr:`tree` using a :py:class:`~geopandas.GeoDataFrame`"""
         if gdf.empty:
             return
         gdf = gdf.copy(deep=False)
@@ -484,6 +519,7 @@ class TreeSplitter:
         return [xr.DataTree(ds, name=str(label)) for label, ds in groupby]
 
     def result(self, inplace: bool, prune_node: bool) -> xr.DataTree | None:
+        """Return the result of the operation"""
         if not inplace:
             return xr.DataTree.from_dict(
                 {
@@ -655,8 +691,42 @@ def map_impact_function(
 
 
 def map_aggregate_function(
-    tree: xr.DataTree, func_map: FunctionMap | DatasetFunction
+    tree: xr.DataTree, func_map: FunctionMap | DatasetFunction | Callable
 ) -> xr.DataTree:
+    """Apply a aggregate function map onto a data tree.
+
+    If ``func_map`` is a single function/callable, it will be applied onto all nodes in
+    ``tree``.
+
+    If it is a mapping, the an algorithm identifies which function to apply for nodes
+    in ``tree``. It performs the following checks, using the first match in this order:
+
+    - Match the full node path to the ``func_map`` key.
+    - Match the node name to the ``func_map`` key.
+    - If the node is a leaf, match a key with the leaf node type.
+    - Use the default key, if it exists.
+
+    If no match was possible, no function will be applied to the node, and the returned
+    tree will have a node *without dataset* at this path.
+
+    If a node was matched and it does not contain data, :py:func:`merge_tree_dset` is
+    called on the node and the matched aggregate function will be applied onto the
+    result.
+
+    Parameters
+    ----------
+    tree
+        The data tree to apply the function (map) to.
+    func_map
+        The function or function map to apply to the data tree. If a mapping, the keys
+        must identify node names or paths to apply the function to, and the values must
+        be aggregate functions.
+
+    Returns
+    -------
+    tree_applied : xarray.DataTree
+        A tree whose nodes contain datasets transformed by ``func_map``.
+    """
     mapper = TreeMapper(tree=tree, func_map=func_map, registry=None)
     mapper.apply(use_parent=False, use_merge=True)
     return mapper.result()

@@ -50,6 +50,8 @@ Data Tree Modification
 
     impact_function
     map_impact_function
+    map_aggregate_function
+    REGISTRY
 
 
 Engine

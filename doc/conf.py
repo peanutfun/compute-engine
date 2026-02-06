@@ -39,8 +39,8 @@ napoleon_type_aliases = {
     "climada.hazard.Hazard": ":py:class:`~climada.hazard.base.Hazard`",
     "climada.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",
     "climada.entity.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",
-    "ArrayLike": "py:class:`numpy.typing.ArrayLike`",
-    "numpy.ArrayLike": "py:class:`numpy.typing.ArrayLike`",
+    "ArrayLike": ":external+numpy:term:`array_like`",
+    "numpy.testing.ArrayLike": ":external+numpy:term:`array_like`",
 }
 autodoc_type_aliases = napoleon_type_aliases
 
