@@ -117,12 +117,20 @@ class TestMapOverDatasets:
 
 
 class TestTreeSplitter:
-    @pytest.fixture
-    def splitter(self, datatree):
-        return TreeSplitter(tree=datatree["/b"])
+    @pytest.fixture(params=[True, False])
+    def inplace(self, request):
+        return request.param
 
-    def test_init(self, dataset):
-        ts = TreeSplitter(tree=dataset)
+    @pytest.fixture(params=[True, False])
+    def prune_node(self, request):
+        return request.param
+
+    @pytest.fixture
+    def splitter(self, datatree, inplace, prune_node):
+        return TreeSplitter(tree=datatree["/b"], inplace=inplace, prune_node=prune_node)
+
+    def test_init(self, dataset, inplace, prune_node):
+        ts = TreeSplitter(tree=dataset, inplace=inplace, prune_node=prune_node)
         assert isinstance(ts.tree, xr.DataTree)
 
     @pytest.fixture
@@ -133,12 +141,9 @@ class TestTreeSplitter:
         ]
         return splitter
 
-    @pytest.mark.parametrize("inplace", (True, False))
-    @pytest.mark.parametrize("prune_node", (True, False))
-    def test_result(self, splitter_with_child_nodes, dataset, inplace, prune_node):
-        result = splitter_with_child_nodes.result(
-            inplace=inplace, prune_node=prune_node
-        )
+    def test_result(self, splitter_with_child_nodes, dataset):
+        inplace = splitter_with_child_nodes.inplace
+        result = splitter_with_child_nodes.result
 
         if inplace:
             assert result is None
@@ -153,7 +158,7 @@ class TestTreeSplitter:
             "bar": xr.DataTree(dataset),
         }
         comparison = dataset
-        if prune_node:
+        if splitter_with_child_nodes.prune_node:
             comparison = dataset.drop_vars("var") if inplace else xr.Dataset()
         xr.testing.assert_equal(result.to_dataset(), comparison)
 
@@ -460,7 +465,12 @@ class TestSplitFromGeo:
 
     @pytest.mark.parametrize("groupby_kws", [None, {"by": "cat"}])
     def test_split(self, groupby_kws, geo_dataset, geo_dataframe, assert_split_1_2):
-        dt = split_from_geo(geo_dataset, geo_dataframe, groupby_kws=groupby_kws)
+        dt = split_from_geo(
+            geo_dataset,
+            geo_dataframe,
+            groupby_kws=groupby_kws,
+            mask_kws={"prune": False},
+        )
         assert isinstance(dt, xr.DataTree)
         assert dt.is_hollow
         assert sorted(dict(dt.subtree_with_keys).keys()) == sorted([".", "1", "2"])
