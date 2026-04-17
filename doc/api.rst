@@ -41,9 +41,8 @@ Data Tree Manipulation
     split_from_groupby_bins
     merge_tree_dset
 
-
-Data Tree Modification
-----------------------
+Data Tree Operations
+--------------------
 
 .. autosummary::
     :toctree: generated/

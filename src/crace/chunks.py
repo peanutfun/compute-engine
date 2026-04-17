@@ -19,17 +19,24 @@ def merge_dicts(
 ) -> dict[Hashable, T]:
     """Merge several dictionaries using an aggregator function.
 
-    For each key appearing in one or more dictionaries, all values are aggregated
-    using the provided aggregator. Missing keys are replaced with ``default``.
+    For each key appearing in one or more dictionaries, all values are
+    aggregated using the provided aggregator. Missing keys are replaced
+    with ``default``.
 
-    Args:
-        *dicts (Mapping[Hashable, T]): Dictionaries to merge.
-        agg (Callable[[T | Sequence[T]], T]): Aggregation function taking a sequence or
-            single value and returning a single merged/aggregated value.
-        default (T): Default value used when a key is missing in a dictionary.
+    Parameters
+    ----------
+    *dicts
+        Dictionaries to merge.
+    agg
+        Aggregation function taking a sequence or single value and
+        returning a single merged/aggregated value.
+    default
+        Default value used when a key is missing in a dictionary.
 
-    Returns:
-        dict[Hashable, T]: A merged dictionary where values are aggregated.
+    Returns
+    -------
+    dict
+        A merged dictionary where values are aggregated.
     """
     merged = dict(dicts[0])
     for new in dicts[1:]:
@@ -41,17 +48,23 @@ def merge_dicts(
 def unify_chunks(arr: AnyXarray) -> AnyXarray:
     """Unify the chunk structure of an xarray object.
 
-    Applies ``xarray.DataArray.unify_chunks`` or ``xarray.Dataset.unify_chunks``.
-    For ``DataTree`` inputs, applies unification across all datasets.
+    Applies ``~xarray.Dataset.unify_chunks`` for arrays and datasets. For ``DataTree``
+    inputs, applies unification across all datasets.
 
-    Args:
-        arr (AnyXarray): An xarray ``DataArray``, ``Dataset``, or ``DataTree``.
+    Parameters
+    ----------
+    arr : AnyXarray
+        The xarray object.
 
-    Returns:
-        AnyXarray: A new object with unified chunk layout.
+    Returns
+    -------
+    AnyXarray
+        A new object with unified chunk layout.
 
-    See also:
-        https://docs.xarray.dev/en/stable/generated/xarray.unify_chunks.html#xarray.unify_chunks
+    See Also
+    --------
+    xarray.DataArray.unify_chunks
+    xarray.Dataset.unify_chunks
     """
     if isinstance(arr, xr.DataTree):
         return map_over_datasets(lambda x: x.unify_chunks(), arr)
@@ -61,11 +74,15 @@ def unify_chunks(arr: AnyXarray) -> AnyXarray:
 def is_chunked(arr: AnyXarray) -> bool:
     """Determine whether an xarray object is Dask-chunked.
 
-    Args:
-        arr (AnyXarray): An xarray ``DataArray``, ``Dataset`` or ``DataTree``.
+    Parameters
+    ----------
+    arr : AnyXarray
+        An xarray ``DataArray``, ``Dataset`` or ``DataTree``.
 
-    Returns:
-        bool: True if any stored data uses Dask chunks, otherwise False.
+    Returns
+    -------
+    bool
+        ``True`` if any stored data uses Dask chunks, otherwise ``False``.
     """
     if isinstance(arr, xr.DataArray):
         return isinstance(arr.data, DaskArray)
@@ -86,16 +103,20 @@ def normed_chunksize(
     """Compute normalized chunk sizes for each dimension of an xarray object.
 
     Chunk sizes are unified and then aggregated along each dimension using
-    the provided aggregator (e.g., ``np.nanmax``). For ``DataTree`` inputs,
-    chunk sizes from all datasets are merged.
+    the provided aggregator. For ``DataTree`` inputs, chunk sizes from all datasets are
+    merged.
 
-    Args:
-        arr (AnyXarray): The input xarray object.
-        agg (Callable[..., float], optional): Aggregator applied to dimension chunk
-        sizes. Defaults to ``np.nanmax``.
+    Parameters
+    ----------
+    arr : AnyXarray
+        The input xarray object.
+    agg
+        Aggregator applied to dimension chunk sizes. Default is :py:func:`numpy.nanmax`.
 
-    Returns:
-        dict[Hashable, int]: A mapping from dimension names to normalized chunk sizes.
+    Returns
+    -------
+    dict
+        Mapping from dimension names to normalized chunk sizes.
     """
     chunksizes = unify_chunks(arr).chunksizes
     if isinstance(arr, xr.DataTree):
@@ -115,14 +136,18 @@ def norm_chunks(
     - If the reference is chunked, its normalized chunk sizes are used.
     - Chunks are never made *smaller* than the original array's chunks.
 
-    Args:
-        arr (AnyXarray): Input xarray object to rechunk.
-        ref (xr.DataTree | xr.Dataset | xr.DataArray | None, optional):
-            Reference object whose chunk sizes should be matched when possible.
-            Defaults to None.
+    Parameters
+    ----------
+    arr : AnyXarray
+        Input xarray object to rechunk.
+    ref
+        Reference object whose chunk sizes should be matched when possible. Default:
+        ``None``.
 
-    Returns:
-        AnyXarray: A rechunked xarray object with normalized chunk sizes.
+    Returns
+    -------
+    AnyXarray
+        A rechunked xarray object with normalized chunk sizes.
     """
     # Check if array is chunked at all
     if not is_chunked(arr):

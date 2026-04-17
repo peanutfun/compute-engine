@@ -18,6 +18,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.viewcode",
     "sphinx_remove_toctrees",
     "myst_nb",
 ]
@@ -35,6 +36,8 @@ napoleon_preprocess_types = True
 napoleon_use_rtype = True
 
 napoleon_type_aliases = {
+    "AnyXarray": ":py:class:`xarray.DataTree` | :py:class:`xarray.Dataset` | "
+    ":py:class:`xarray.DataArray`",
     "DatasetOrArray": ":py:class:`xarray.Dataset` | :py:class:`xarray.DataArray`",
     "climada.hazard.Hazard": ":py:class:`~climada.hazard.base.Hazard`",
     "climada.Exposures": ":py:class:`~climada.entity.exposures.base.Exposures`",

@@ -198,6 +198,8 @@ def align(
         Method for other alignments of non-spatial coordinates
     odc.geo.xr.ODCExtensionDa.reproject
         Method for other spatial alignments
+    crace.align.Aligner
+        Internal class handling the alignment
     """
     aligner = Aligner(
         hazard=hazard,
@@ -211,6 +213,43 @@ def align(
 
 
 class Aligner:
+    """Class that manages alignment algorithms.
+
+    Use as follows:
+
+    - Instantiate with hazard and exposure instances of either
+      :py:class:`~xarray.DataArray` or :py:class:`~xarray.Dataset`. Alignment happens
+      during initialization.
+    - Retrieve :py:attr:`hazard` and :py:attr:`exposure`. DataArrays will be promoted
+      to Datasets.
+
+    Parameters
+    ----------
+    hazard
+        The data representing the hazard.
+    exposure
+        The data representing the exposure.
+    method_nonspatial
+        The method(s) for non-spatial coordinate alignment.
+    method_spatial
+        The method for spatial coordinate alignment.
+    force_reproject
+        If ``True``, always use the ODC reproject method
+    align_chunks
+        If ``True``, align the chunks for the returned datasets (if they are chunked).
+
+    Attributes
+    ----------
+    hazard : xr.Dataset
+        The aligned hazard dataset.
+    exposure : xr.Dataset
+        The aligned exposure dataset.
+
+    Warning
+    -------
+    This class is not intended for external use and may be modified without announcement
+    """
+
     def __init__(
         self,
         hazard: xr.DataArray | xr.Dataset,
@@ -269,6 +308,28 @@ class Aligner:
     def align_names(
         arr1: DatasetOrArray, arr2: DatasetOrArray, name_fallback: str
     ) -> tuple[DatasetOrArray, DatasetOrArray]:
+        """Align names of two datasets or arrays
+
+        If ``arr1`` has a name, use this name for ``arr2``. Otherwise, use
+        ``name_fallback`` for both arrays.
+
+        If any argument is a dataset, this only works if the dataset holds exactly one
+        data variable. The above rule is then applied to this variable.
+
+        Parameters
+        ----------
+        arr1 : DatasetOrArray
+            First array.
+        arr2 : DatasetOrArray
+            Second array.
+
+        Returns
+        -------
+        arr1 : DatasetOrArray
+            Renamed first array.
+        arr2 : DatasetOrArray
+            Renamed second array.
+        """
         name = name_fallback
         if isinstance(arr1, xr.DataArray):
             if arr1.name is None:
@@ -291,8 +352,10 @@ class Aligner:
 
     @property
     def hazard(self) -> xr.Dataset:
+        """The aligned hazard data, promoted to a dataset"""
         return promote_to_dataset(self._hazard, name="exposure")
 
     @property
     def exposure(self) -> xr.Dataset:
+        """The aligned exposure data, promoted to a dataset"""
         return promote_to_dataset(self._exposure, name="exposure")

@@ -85,6 +85,9 @@ def mask_dataset(
     geometry
         The geometry to use as a mask. The geometry will be rasterized at the resolution
         of the dataset.
+    prune
+        If ``True``, drop coordinates for all-NaN values outside of the rectangular mask
+        boundary. If ``False`` (default), only apply the mask.
     all_touched
         If ``True`` (default), the mask will be applied to any pixel that touches the
         rasterized geometry. If ``False``, only pixels whose center is within the
@@ -106,6 +109,7 @@ def mask_dataset(
     """
 
     def maybe_invert(min_max: tuple[float, float], res: float):
+        """If the resolution is negative, invert minimum and maximum"""
         if res < 0:
             return tuple(reversed(min_max))
         return min_max
@@ -184,9 +188,9 @@ def split_from_groupby_bins(
     crace.tree.TreeSplitter
         Internal class handling the splitting.
     """
-    splitter = TreeSplitter(tree=node)
+    splitter = TreeSplitter(tree=node, inplace=inplace, prune_node=prune_node)
     splitter.split_from_groupby_bins(**groupby_bins_kwargs)
-    return splitter.result(inplace=inplace, prune_node=prune_node)
+    return splitter.result
 
 
 @overload
@@ -249,9 +253,9 @@ def split_from_groupby(
     crace.tree.TreeSplitter
         Internal class handling the splitting.
     """
-    splitter = TreeSplitter(tree=node)
+    splitter = TreeSplitter(tree=node, inplace=inplace, prune_node=prune_node)
     splitter.split_from_groupby(**groupby_kwargs)
-    return splitter.result(inplace=inplace, prune_node=prune_node)
+    return splitter.result
 
 
 @overload
@@ -283,6 +287,7 @@ def split_from_geo(
 
 
 # TODO: prune mask
+# TODO: remove prune_mask from all splits
 def split_from_geo(
     node: xr.Dataset | xr.DataTree,
     gdf: gpd.GeoDataFrame,
@@ -348,7 +353,11 @@ def split_from_geo(
         data frame column apart from the geometry column is present.
     mask_kws
         Keyword arguments to :py:func:`mask_dataset`, which is called on ``node`` with
-        the union of geometries for each group. Default values: ``all_touched: False``.
+        the union of geometries for each group. Default values:
+
+        - ``all_touched: False``: Avoids overlap of split datasets
+        - ``prune: <prune_node>``: If ``prune_node`` is ``True``, we save effort by
+          removing coordinates that lie outside the respective masks.
 
     Returns
     -------
@@ -377,7 +386,7 @@ def split_from_geo(
     crace.tree.TreeSplitter
         Internal class handling the splitting.
     """
-    splitter = TreeSplitter(tree=node)
+    splitter = TreeSplitter(tree=node, inplace=inplace, prune_node=prune_node)
     splitter.split_from_dataframe(
         gdf=gdf,
         keep_exterior=keep_exterior,
@@ -385,7 +394,7 @@ def split_from_geo(
         groupby_kws=groupby_kws,
         mask_kws=mask_kws,
     )
-    return splitter.result(inplace=inplace, prune_node=prune_node)
+    return splitter.result
 
 
 class TreeSplitter:
@@ -396,7 +405,7 @@ class TreeSplitter:
     - Initialize with a :py:class:`~xarray.DataTree` or :py:class:`~xarray.Dataset`
       instance (the latter will be promoted to a tree node).
     - Call one of the ``split_`` methods.
-    - Retrieve :py:meth:`result`.
+    - Retrieve :py:attr:`result`.
 
     Attention
     ---------
@@ -417,11 +426,18 @@ class TreeSplitter:
 
     """
 
-    def __init__(self, tree: xr.DataTree | xr.Dataset):
+    def __init__(
+        self,
+        tree: xr.DataTree | xr.Dataset,
+        inplace: bool,
+        prune_node: bool,
+    ):
         if not isinstance(tree, xr.DataTree):
             tree = xr.DataTree(dataset=tree)
         self.tree = tree
         self.child_nodes: list[xr.DataTree] = []
+        self.inplace = inplace
+        self.prune_node = prune_node
 
     def split_from_dataframe(
         self,
@@ -435,10 +451,11 @@ class TreeSplitter:
         if gdf.empty:
             return
         gdf = gdf.copy(deep=False)
-        mask_kws = {"all_touched": False} | (
+        mask_kws = {"all_touched": False, "prune": self.prune_node} | (
             dict(mask_kws) if mask_kws is not None else {}
         )
 
+        # For high precision, transform later
         if not high_precision:
             gdf = gdf.to_crs(self.tree.to_dataset().odc.geobox.crs)
 
@@ -505,11 +522,13 @@ class TreeSplitter:
         )
 
     def split_from_groupby(self, **groupby_kwargs):
+        """Split :py:attr:`tree` using :py:meth:`xarray.Dataset.groupby`"""
         self.child_nodes = self._nodes_from_dsgroupby(
             self.tree.dataset.groupby(**groupby_kwargs)
         )
 
     def split_from_groupby_bins(self, **groupby_bins_kwargs):
+        """Split :py:attr:`tree` using :py:meth:`xarray.Dataset.groupby_bins`"""
         self.child_nodes = self._nodes_from_dsgroupby(
             self.tree.dataset.groupby_bins(**groupby_bins_kwargs)
         )
@@ -518,27 +537,51 @@ class TreeSplitter:
     def _nodes_from_dsgroupby(groupby) -> list[xr.DataTree]:
         return [xr.DataTree(ds, name=str(label)) for label, ds in groupby]
 
-    def result(self, inplace: bool, prune_node: bool) -> xr.DataTree | None:
+    @property
+    def result(self) -> xr.DataTree | None:
         """Return the result of the operation"""
-        if not inplace:
+        if not self.inplace:
             return xr.DataTree.from_dict(
                 {
                     "/": xr.DataTree(
-                        dataset=self.tree.dataset if not prune_node else None,
+                        dataset=self.tree.dataset if not self.prune_node else None,
                         name=self.tree.name,
                     )
                 }
                 | {f"/{child.name}": child for child in self.child_nodes}
             )
 
-        if prune_node:
+        if self.prune_node:
             self.tree.ds = None
-        self.tree.children = {child.name: child for child in self.child_nodes}
+        self.tree.children = {str(child.name): child for child in self.child_nodes}
 
 
 # TODO: Align all first!
 def merge_by_combine(dset: xr.Dataset, *dsets: xr.Dataset) -> xr.Dataset:
-    """Combine all datasets to a new one. Assume that there are only NaN overlaps"""
+    """Primitive dataset combination.
+
+    Other datasets are "inserted" into the first one with "outer" alignment rules. This
+    means that only NaN values in the aligned first dataset will be replaced by other
+    values.
+
+    Parameters
+    ----------
+    dset
+        The first dataset.
+    dsets
+        The datasets to combine ``dset`` with.
+
+    Returns
+    -------
+    xarray.Dataset
+        All datasets combined into one. Its coordinates will be the union of the
+        coordinates from all datasets.
+
+    See Also
+    --------
+    xarray.Dataset.combine_first
+        Method for combining datasets iteratively.
+    """
     if not dsets:
         return dset
     for ds_right in dsets:
@@ -614,6 +657,11 @@ def merge_tree_dset(
         If :py:attr:`~xarray.DataTree.is_hollow` returns ``False`` for ``root``.
     ValueError
         If ``root`` contains a dataset and ``overwrite=False``.
+
+    See Also
+    --------
+    crace.tree.merge_by_combine
+        Function for merging the datasets
     """
     if not inplace:
         root = root.copy()  # Shallow copy
