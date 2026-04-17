@@ -5,9 +5,10 @@ objects into `xarray.Dataset` representations, enabling interoperability with
 xarray-based geospatial and analytical workflows.
 """
 
+import sys
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 import numpy as np
 import odc.geo  # noqa: F401
@@ -17,11 +18,9 @@ import sparse as sp
 import xarray as xr
 from xarray.core import dtypes as xrdtypes
 
-try:
+if TYPE_CHECKING or "sphinx.ext.autodoc" in sys.modules:
     from climada.entity import Exposures
     from climada.hazard import Hazard
-except ImportError as err:
-    raise RuntimeError("Please install CLIMADA for using this module!") from err
 
 from .sparse import zero_to_nan
 from .types import SPATIAL_DIM, DatasetOrArray
@@ -29,39 +28,54 @@ from .types import SPATIAL_DIM, DatasetOrArray
 EVENT_DIM = "event"
 
 
-def drop_none(mapping: dict[str, Any]):
-    """Remove keys with None values from a dictionary.
+def drop_none(mapping: Mapping[str, Any]):
+    """Remove keys with ``None`` values from a dictionary.
 
     Args:
-        mapping (dict[str, Any]): Input dictionary.
+        mapping (Mapping[str, Any]): Input dictionary.
 
     Returns:
-        dict[str, Any]: A new dictionary without entries whose values are `None`.
+        dict[str, Any]: A new dictionary without entries whose values are ``None``.
     """
     return {key: val for key, val in mapping.items() if val is not None}
 
 
 def set_single_indices(
-    ds: DatasetOrArray, coord_names: str | Iterable[str], index_cls=None, **options
+    dset: DatasetOrArray,
+    coord_names: str | Iterable[str],
+    index_cls: type | None = None,
+    **options,
 ) -> DatasetOrArray:
     """Set individual indices for existing coordinates on an xarray object.
 
-    Args:
-        ds (xr.Dataset | xr.DataArray): The xarray dataset or data array to modify.
-        coord_names (str | Iterable[str]): Name or iterable of names of coordinates
-            to set as indices.
-        index_cls (optional): Custom index class to use for indexing. Defaults to None.
-        **options: Additional keyword arguments passed to ``xarray.Dataset.set_xindex``.
+    Contrary to `xarray.Dataset.set_xindex``, this does not create a multi-index from
+    the coordinates in ``coord_names``, but individual indices.
 
-    Returns:
-        ds (xr.Dataset | xr.DataArray: A new dataset or array with the specified
-        coordinates indexed.
+    Parameters
+    ----------
+    dset
+        The xarray dataset or data array to modify.
+    coord_names
+        Name or iterable of names of coordinates to set as indices.
+    index_cls
+        Custom index class to use for indexing. Defaults to ``None``.
+    **options
+        Additional keyword arguments passed to :py:meth:`xarray.Dataset.set_xindex`.
+
+    Returns
+    -------
+    DatasetOrArray
+        A new dataset or array with the specified coordinates indexed.
+
+    See Also
+    --------
+    xarray.Dataset.set_xindex : Creates a multi-index from existing coordinates.
     """
     if isinstance(coord_names, str):
         coord_names = [coord_names]
     for name in coord_names:
-        ds = ds.set_xindex(name, index_cls=index_cls, **options)
-    return ds
+        dset = dset.set_xindex(name, index_cls=index_cls, **options)
+    return dset
 
 
 def hazard_to_dset(
@@ -69,19 +83,18 @@ def hazard_to_dset(
 ) -> xr.Dataset:
     """Convert a CLIMADA ``Hazard`` object into an xarray Dataset.
 
-    The resulting dataset organizes event and spatial dimensions for
-    geospatial analysis and visualization, optionally converting coordinates
-    into a grid.
+    The resulting dataset represents hazard data in either stacked or gridded form,
+    including metadata and coordinate reference system (CRS) information.
 
     Args:
-        hazard (climada.Hazard): A CLIMADA ``Hazard`` instance.
-        to_grid (bool, optional): If True, create a 2D grid from the lat/lon
-            coordinates. Defaults to True.
-        parse_date (bool, optional): If True, convert ordinal date integers to pandas
-        Timestamps. Defaults to True.
+        hazard (:py:class:`~climada.hazard.base.Hazard`): A CLIMADA ``Hazard`` instance.
+        to_grid: If True, create a 2D grid from the lat/lon
+            coordinates.
+        parse_date: If True, convert ordinal date integers to pandas
+            Timestamps.
 
     Returns:
-        xarray.Dataset: An xarray Dataset representation of the hazard object,
+        An xarray Dataset representation of the hazard object,
         including event and spatial dimensions, metadata, and CRS.
     """
 
@@ -162,12 +175,11 @@ def hazard_to_dset(
 def exposure_to_dset(exposure: Exposures, *, to_grid: bool = True) -> xr.Dataset:
     """Convert a CLIMADA ``Exposures`` object into an xarray Dataset.
 
-    The resulting dataset represents exposure data in either stacked or
-    gridded form, including metadata and coordinate reference system (CRS)
-    information.
+    The resulting dataset represents exposure data in either stacked or gridded form,
+    including metadata and coordinate reference system (CRS) information.
 
     Args:
-        exposure (climada.Exposures): A CLIMADA ``Exposures`` instance.
+        exposure : A CLIMADA ``Exposures`` instance.
         to_grid (bool, optional): If True, create a 2D grid from the lat/lon
             coordinates. Defaults to True.
 
@@ -219,7 +231,35 @@ def exposure_to_dset(exposure: Exposures, *, to_grid: bool = True) -> xr.Dataset
 
 # TODO: Automatically assign centroids if exposure has none
 def align_1d(hazard: xr.Dataset, exposure: xr.Dataset) -> tuple[xr.Dataset, xr.Dataset]:
-    """Align hazard and exposure based on assign centroids"""
+    """Align one-dimensional hazard and exposure datasets by centroid assignment.
+
+    This function aligns a hazard dataset and an exposure dataset along their
+    one-dimensional spatial axis (``loc``), based on centroid indices stored in the
+    exposure dataset. It performs the following steps:
+
+    Args:
+        hazard : A one-dimensional hazard dataset containing spatial
+            dimension ``loc`` and a hazard type stored in
+            ``hazard.attrs["<haz_type>"]``.
+        exposure : A one-dimensional exposure dataset containing a
+            centroid lookup variable named ``"centr_<haz_type>"``.
+
+    Returns:
+        The aligned hazard and exposure datasets, such
+        that:
+
+            - hazard and exposure entries with invalid centroid assignments are removed,
+            - hazard entries are reordered to match exposure,
+            - hazard entries have the same coordinates as exposure (to ensure the
+              datasets align).
+
+    Raises:
+        AssertionError: If either input dataset is two-dimensional.
+
+    Notes:
+        * This function relies on centroid ID variables of the form
+          ``centr_<haz_type>`` in the exposure dataset.
+    """
     assert hazard.odc.spatial_dims is None, "Hazard must be one-dimensional in space"
     assert exposure.odc.spatial_dims is None, (
         "Exposure must be one-dimensional in space"
@@ -232,9 +272,7 @@ def align_1d(hazard: xr.Dataset, exposure: xr.Dataset) -> tuple[xr.Dataset, xr.D
         dim=SPATIAL_DIM, how="all"
     )
 
-    def drop_spatial_indexes(
-        ds: xr.Dataset,
-    ) -> tuple[xr.Dataset, dict[str, tuple[str, np.ndarray]]]:
+    def drop_spatial_indexes(ds: xr.Dataset) -> xr.Dataset:
         indexes = ds.indexes
         idx_to_drop = {
             name: (SPATIAL_DIM, indexes[name].to_numpy())

@@ -39,7 +39,32 @@ def write_zarr(arr: AnyXarray, path: Path | str, mode: str = "w", **kwargs):
 
 
 def cache_zarr(arr: AnyXarray, path: Path | str, mode: str = "w") -> AnyXarray:
-    """Write data array to a Zarr file and reload"""
+    """Write data array to a Zarr file and reload the data.
+
+    This will immediately write the data to file, close the original object, and reload
+    the data from the file that was just written.
+
+    Parameters
+    ----------
+    arr : AnyXarray
+        The xarray object to cache.
+    path
+        The path to write the file to.
+    mode
+        The mode for writing the file.
+
+    Returns
+    -------
+    AnyXarray
+        The cached object, reloaded from the written file.
+
+    Note
+    ----
+    The Zarr file writer is more restrictive about the array chunk structure than the
+    NetCDF4 writers. When writing, this method will try to normalize the chunks
+    accordingly, possibly altering the chunk structure of the returned object. The data
+    always stays the same.
+    """
     open_func = xr.open_dataset
     if isinstance(arr, xr.DataArray):
         open_func = xr.open_dataarray
@@ -96,16 +121,64 @@ def maybe_load(
     return compute_func(arr)
 
 
-def open_dataarray(filename_or_obj, **kwargs):
-    """Open a chunked DataArray"""
+def open_dataarray(filename_or_obj, **kwargs) -> xr.DataArray:
+    """Open a chunked :py:class:`~xarray.DataArray`.
+
+    See :py:func:`~xarray.open_dataarray`. By default, the data will be opened with dask
+    (``chunked="auto"``) and all coordinates will be decoded (``decode_coords="all"``).
+
+    Parameters
+    ----------
+    filename_or_obj
+        Path to a file or file-like object.
+    kwargs
+        Keyword arguments to :py:func:`~xarray.open_dataarray`.
+
+    Returns
+    -------
+    xarray.DataArray
+        The created array.
+    """
     return open_xr(xr.open_dataarray, filename_or_obj, **kwargs)
 
 
 def open_dataset(filename_or_obj, **kwargs):
-    """Open a chunked Dataset"""
+    """Open a chunked :py:class:`~xarray.Dataset`.
+
+    See :py:func:`~xarray.open_dataset`. By default, the data will be opened with dask
+    (``chunked="auto"``) and all coordinates will be decoded (``decode_coords="all"``).
+
+    Parameters
+    ----------
+    filename_or_obj
+        Path to a file or file-like object.
+    kwargs
+        Keyword arguments to :py:func:`~xarray.open_dataset`.
+
+    Returns
+    -------
+    xarray.Dataset
+        The created dataset.
+    """
     return open_xr(xr.open_dataset, filename_or_obj, **kwargs)
 
 
 def open_datatree(filename_or_obj, **kwargs):
-    """Open a chunked DataTree"""
+    """Open a chunked :py:class:`~xarray.DataTree`.
+
+    See :py:func:`~xarray.open_datatree`. By default, the data will be opened with dask
+    (``chunked="auto"``) and all coordinates will be decoded (``decode_coords="all"``).
+
+    Parameters
+    ----------
+    filename_or_obj
+        Path to a file or file-like object.
+    kwargs
+        Keyword arguments to :py:func:`~xarray.open_datatree`.
+
+    Returns
+    -------
+    xarray.DataTree
+        The created tree.
+    """
     return open_xr(xr.open_datatree, filename_or_obj, **kwargs)

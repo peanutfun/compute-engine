@@ -72,22 +72,78 @@ def mask_dataset(
     all_touched: bool = True,
     invert: bool = False,
 ) -> DatasetOrArray:
-    """Mask data using a geometry and possibly drop coordinates without values
+    """Mask data using a geometry and optionally clip the data to the mask.
 
-    See https://odc-geo.readthedocs.io/en/latest/_api/odc.geo.xr.ODCExtension.mask.html#odc.geo.xr.ODCExtension.mask"""
+    Apply the ``geometry`` as mask. Outside of the mask, the dataset values will be set
+    to ``NaN``.
+
+    Parameters
+    ----------
+    data : DatasetOrArray
+        The dataset onto which a mask will be applied. The original dataset will not
+        be modified.
+    geometry
+        The geometry to use as a mask. The geometry will be rasterized at the resolution
+        of the dataset.
+    prune
+        If ``True``, drop coordinates for all-NaN values outside of the rectangular mask
+        boundary. If ``False`` (default), only apply the mask.
+    all_touched
+        If ``True`` (default), the mask will be applied to any pixel that touches the
+        rasterized geometry. If ``False``, only pixels whose center is within the
+        geometry will be selected. See :py:meth:`~odc.geo.xr.ODCExtension.mask` for
+        details.
+    invert
+        If ``True``, invert the mask and select all pixels *outside* the geometry.
+        Default: ``False``.
+
+    Returns
+    -------
+    data : DatasetOrArray
+        A shallow copy of ``data``, with the appropriate values masked.
+
+    See Also
+    --------
+    odc.geo.xr.ODCExtension.mask
+        The method used for masking
+    """
+
+    def maybe_invert(min_max: tuple[float, float], res: float):
+        """If the resolution is negative, invert minimum and maximum"""
+        if res < 0:
+            return tuple(reversed(min_max))
+        return min_max
+
     if prune:
         res_x, res_y = data.odc.geobox.resolution.xy
-        minx, miny, maxx, maxy = geometry.boundingbox.buffered(
+        x_min, y_min, x_max, y_max = geometry.boundingbox.buffered(
             xbuff=abs(res_x), ybuff=abs(res_y)
         )
-        if res_y < 0:
-            # y-coordinates are inverted
-            miny, maxy = maxy, miny
+        y_min, y_max = maybe_invert((y_min, y_max), res_y)
+        x_min, x_max = maybe_invert((x_min, x_max), res_x)
         data = data.sel(
-            {data.rio.x_dim: slice(minx, maxx), data.rio.y_dim: slice(miny, maxy)}
+            {data.rio.x_dim: slice(x_min, x_max), data.rio.y_dim: slice(y_min, y_max)}
         )
     data = data.odc.mask(geometry, invert=invert, all_touched=all_touched)
     return data
+
+
+@overload
+def split_from_groupby_bins(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[False] = ...,
+    **groupby_bins_kwargs,
+) -> xr.DataTree: ...
+
+
+@overload
+def split_from_groupby_bins(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[True] = ...,
+    **groupby_bins_kwargs,
+) -> None: ...
 
 
 def split_from_groupby_bins(
@@ -95,10 +151,64 @@ def split_from_groupby_bins(
     prune_node: bool = True,
     inplace: bool = False,
     **groupby_bins_kwargs,
-):
-    splitter = TreeSplitter(tree=node)
+) -> xr.DataTree | None:
+    """Split a data tree node using ``groupby_bins``
+
+    The ``node`` dataset will be split using :py:meth:`~xarray.Dataset.groupby_bins`,
+    and the resulting grouped datasets will be placed into child nodes. The child
+    :py:attr:`~xarray.DataTree.name` will be the :py:class:`str` representation of the
+    respective group label.
+
+    Parameters
+    ----------
+    node
+        The tree node to split. If a :py:class:`~xarray.Dataset` is passed, it is first
+        placed into a new tree node.
+    prune_node
+        If ``True`` (default), the ``node`` dataset is removed before attaching the
+        child nodes.
+    inplace
+        If ``True``, attach the child nodes to ``node``. If ``False`` (default), create
+        a shallow copy of ``node`` to attach the child nodes to and return it.
+    groupby_bins_kwargs
+        Keyword arguments passed to :py:meth:`~xarray.Dataset.groupby_bins`.
+
+    Returns
+    -------
+    split_node : xarray.DataTree
+        A shallow copy of ``node`` with split child nodes attached.
+    None
+        If ``inplace=True``.
+
+    See Also
+    --------
+    ~crace.split_from_groupby, ~crace.split_from_geo
+    ~crace.merge_tree_dset
+        Inverse operation for merging child datasets into a common root.
+    crace.tree.TreeSplitter
+        Internal class handling the splitting.
+    """
+    splitter = TreeSplitter(tree=node, inplace=inplace, prune_node=prune_node)
     splitter.split_from_groupby_bins(**groupby_bins_kwargs)
-    return splitter.result(inplace=inplace, prune_node=prune_node)
+    return splitter.result
+
+
+@overload
+def split_from_groupby(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[False] = ...,
+    **groupby_bins_kwargs,
+) -> xr.DataTree: ...
+
+
+@overload
+def split_from_groupby(
+    node: xr.Dataset | xr.DataTree,
+    prune_node: bool = ...,
+    inplace: Literal[True] = ...,
+    **groupby_bins_kwargs,
+) -> None: ...
 
 
 def split_from_groupby(
@@ -107,13 +217,77 @@ def split_from_groupby(
     inplace: bool = False,
     **groupby_kwargs,
 ) -> xr.DataTree | None:
-    """Split using groupby"""
-    splitter = TreeSplitter(tree=node)
+    """Split a data tree node using ``groupby``
+
+    The ``node`` dataset will be split using :py:meth:`~xarray.Dataset.groupby`,
+    and the resulting grouped datasets will be placed into child nodes. The child
+    :py:attr:`~xarray.DataTree.name` will be the :py:class:`str` representation of the
+    respective group label.
+
+    Parameters
+    ----------
+    node
+        The tree node to split. If a :py:class:`~xarray.Dataset` is passed, it is first
+        placed into a new tree node.
+    prune_node
+        If ``True`` (default), the ``node`` dataset is removed before attaching the
+        child nodes.
+    inplace
+        If ``True``, attach the child nodes to ``node``. If ``False`` (default), create
+        a shallow copy of ``node`` to attach the child nodes to and return it.
+    groupby_kwargs
+        Keyword arguments passed to :py:meth:`~xarray.Dataset.groupby`.
+
+    Returns
+    -------
+    split_node : xarray.DataTree
+        A shallow copy of ``node`` with split child nodes attached.
+    None
+        If ``inplace=True``.
+
+    See Also
+    --------
+    ~crace.split_from_groupby_bins, ~crace.split_from_geo
+    ~crace.merge_tree_dset
+        Inverse operation for merging child datasets into a common root.
+    crace.tree.TreeSplitter
+        Internal class handling the splitting.
+    """
+    splitter = TreeSplitter(tree=node, inplace=inplace, prune_node=prune_node)
     splitter.split_from_groupby(**groupby_kwargs)
-    return splitter.result(inplace=inplace, prune_node=prune_node)
+    return splitter.result
+
+
+@overload
+def split_from_geo(
+    node: xr.Dataset | xr.DataTree,
+    gdf: gpd.GeoDataFrame,
+    *,
+    high_precision: bool = ...,
+    keep_exterior: bool = ...,
+    prune_node: bool = ...,
+    inplace: Literal[False] = ...,
+    groupby_kws: Mapping | None = ...,
+    mask_kws: Mapping | None = ...,
+) -> xr.DataTree: ...
+
+
+@overload
+def split_from_geo(
+    node: xr.Dataset | xr.DataTree,
+    gdf: gpd.GeoDataFrame,
+    *,
+    high_precision: bool = ...,
+    keep_exterior: bool = ...,
+    prune_node: bool = ...,
+    inplace: Literal[True] = ...,
+    groupby_kws: Mapping | None = ...,
+    mask_kws: Mapping | None = ...,
+) -> None: ...
 
 
 # TODO: prune mask
+# TODO: remove prune_mask from all splits
 def split_from_geo(
     node: xr.Dataset | xr.DataTree,
     gdf: gpd.GeoDataFrame,
@@ -125,8 +299,94 @@ def split_from_geo(
     groupby_kws: Mapping | None = None,
     mask_kws: Mapping | None = None,
 ) -> xr.DataTree | None:
-    """Split a dataset into subsets and return them as tree leaves"""
-    splitter = TreeSplitter(tree=node)
+    """Split a data tree node based on a ``GeoDataFrame``.
+
+    The ``gdf`` will be grouped by :py:meth:`~pandas.DataFrame.groupby`, and the union
+    of the resulting grouped geometries will be used to mask (see
+    :py:func:`mask_dataset`) the original dataset and create a child node/dataset for
+    each group. The child :py:attr:`~xarray.DataTree.name` will be the :py:class:`str`
+    representation of the respective group label.
+
+    If ``gdf`` contains exactly one other column apart from the active geometry column,
+    this column name will be used as ``by`` parameter in the
+    :py:meth:`~pandas.DataFrame.groupby` operation. Otherwise, ``by`` needs to be
+    specified via ``groupby_kws``.
+
+    Important
+    ---------
+    Groups whose geometries do not intersect with the ``node`` dataset will be skipped.
+
+    Note
+    ----
+    ``gdf`` may contain geometries in a different coordinate reference system (CRS) than
+    the data in ``node``. In this case, the geometries are transferred into the ``node``
+    CRS. As such operations in GeoPandas are pointwise, this may be an imprecise
+    operation which distorts polygonal shapes. If this is a concern, set
+    ``high_precision=True``, in which case all line shapes are split into segments in
+    the resolution of the ``node`` before the CRS transform. This process may require
+    more memory and compute time.
+
+    Parameters
+    ----------
+    node
+        The tree node to split. If a :py:class:`~xarray.Dataset` is passed, it is first
+        placed into a new tree node.
+    gdf
+        Data frame with active geometry column and at least one other column for
+        grouping.
+    high_precision
+        If ``True``, transform each geometry with the resolution of the ``node``
+        dataset. If ``False`` (default), only transform the original points of the
+        ``gdf`` geometries.
+    keep_exterior
+        If ``True``, add another child node that contains all pixels of ``node`` which
+        do not lie in any of the ``gdf`` geometries.
+    prune_node
+        If ``True`` (default), the ``node`` dataset is removed before attaching the
+        child nodes.
+    inplace
+        If ``True``, attach the child nodes to ``node``. If ``False`` (default), create
+        a shallow copy of ``node`` to attach the child nodes to and return it.
+    groupby_kws
+        Keyword arguments to :py:meth:`pandas.DataFrame.groupby` called on ``gdf``.
+        If ``None`` (default), this method can infer the ``by`` argument if only one
+        data frame column apart from the geometry column is present.
+    mask_kws
+        Keyword arguments to :py:func:`mask_dataset`, which is called on ``node`` with
+        the union of geometries for each group. Default values:
+
+        - ``all_touched: False``: Avoids overlap of split datasets
+        - ``prune: <prune_node>``: If ``prune_node`` is ``True``, we save effort by
+          removing coordinates that lie outside the respective masks.
+
+    Returns
+    -------
+    split_node : xarray.DataTree
+        A shallow copy of ``node`` with split child nodes attached.
+    None
+        If ``inplace=True``.
+
+    Raises
+    ------
+    ValueError
+        If ``groupby_kws`` is ``None`` (default), and ``gdf`` has more than two columns.
+
+    See Also
+    --------
+    ~crace.split_from_groupby, ~crace.split_from_groupby_bins
+    ~crace.mask_dataset
+        Function used for masking the ``node`` data for each union of grouped
+        geometries.
+    ~crace.merge_tree_dset
+        Inverse operation for merging child datasets into a common root.
+    geopandas.GeoDataFrame.to_crs
+        Geometry transformation for ``high_precison=False``
+    odc.geo.geom.Geometry.to_crs
+        Geometry transformation for ``high_precison=True``
+    crace.tree.TreeSplitter
+        Internal class handling the splitting.
+    """
+    splitter = TreeSplitter(tree=node, inplace=inplace, prune_node=prune_node)
     splitter.split_from_dataframe(
         gdf=gdf,
         keep_exterior=keep_exterior,
@@ -134,15 +394,50 @@ def split_from_geo(
         groupby_kws=groupby_kws,
         mask_kws=mask_kws,
     )
-    return splitter.result(inplace=inplace, prune_node=prune_node)
+    return splitter.result
 
 
 class TreeSplitter:
-    def __init__(self, tree: xr.DataTree | xr.Dataset):
+    """Class that manages the split algorithms
+
+    Use as follows:
+
+    - Initialize with a :py:class:`~xarray.DataTree` or :py:class:`~xarray.Dataset`
+      instance (the latter will be promoted to a tree node).
+    - Call one of the ``split_`` methods.
+    - Retrieve :py:attr:`result`.
+
+    Attention
+    ---------
+    This class is not intended for external use!
+
+    Parameters
+    ----------
+    tree
+        The node to split. If an :py:class:`~xarray.Dataset`, it will be promoted to
+        a root :py:class:`~xarray.DataTree`.
+
+    Attributes
+    ----------
+    tree : xarray.DataTree
+        The tree to split.
+    child_nodes : dict[str, xarray.DataTree]
+        The child paths and nodes received by splitting.
+
+    """
+
+    def __init__(
+        self,
+        tree: xr.DataTree | xr.Dataset,
+        inplace: bool,
+        prune_node: bool,
+    ):
         if not isinstance(tree, xr.DataTree):
             tree = xr.DataTree(dataset=tree)
         self.tree = tree
         self.child_nodes: list[xr.DataTree] = []
+        self.inplace = inplace
+        self.prune_node = prune_node
 
     def split_from_dataframe(
         self,
@@ -152,13 +447,15 @@ class TreeSplitter:
         groupby_kws: Mapping[str, Any] | None = None,
         mask_kws: Mapping[str, Any] | None = None,
     ):
+        """Split :py:attr:`tree` using a :py:class:`~geopandas.GeoDataFrame`"""
         if gdf.empty:
             return
         gdf = gdf.copy(deep=False)
-        mask_kws = {"all_touched": False} | (
+        mask_kws = {"all_touched": False, "prune": self.prune_node} | (
             dict(mask_kws) if mask_kws is not None else {}
         )
 
+        # For high precision, transform later
         if not high_precision:
             gdf = gdf.to_crs(self.tree.to_dataset().odc.geobox.crs)
 
@@ -225,11 +522,13 @@ class TreeSplitter:
         )
 
     def split_from_groupby(self, **groupby_kwargs):
+        """Split :py:attr:`tree` using :py:meth:`xarray.Dataset.groupby`"""
         self.child_nodes = self._nodes_from_dsgroupby(
             self.tree.dataset.groupby(**groupby_kwargs)
         )
 
     def split_from_groupby_bins(self, **groupby_bins_kwargs):
+        """Split :py:attr:`tree` using :py:meth:`xarray.Dataset.groupby_bins`"""
         self.child_nodes = self._nodes_from_dsgroupby(
             self.tree.dataset.groupby_bins(**groupby_bins_kwargs)
         )
@@ -238,25 +537,51 @@ class TreeSplitter:
     def _nodes_from_dsgroupby(groupby) -> list[xr.DataTree]:
         return [xr.DataTree(ds, name=str(label)) for label, ds in groupby]
 
-    def result(self, inplace: bool, prune_node: bool) -> xr.DataTree | None:
-        if not inplace:
+    @property
+    def result(self) -> xr.DataTree | None:
+        """Return the result of the operation"""
+        if not self.inplace:
             return xr.DataTree.from_dict(
                 {
                     "/": xr.DataTree(
-                        dataset=self.tree.dataset if not prune_node else None,
+                        dataset=self.tree.dataset if not self.prune_node else None,
                         name=self.tree.name,
                     )
                 }
                 | {f"/{child.name}": child for child in self.child_nodes}
             )
 
-        if prune_node:
+        if self.prune_node:
             self.tree.ds = None
-        self.tree.children = {child.name: child for child in self.child_nodes}
+        self.tree.children = {str(child.name): child for child in self.child_nodes}
 
 
+# TODO: Align all first!
 def merge_by_combine(dset: xr.Dataset, *dsets: xr.Dataset) -> xr.Dataset:
-    """Combine all datasets to a new one. Assume that there are only NaN overlaps"""
+    """Primitive dataset combination.
+
+    Other datasets are "inserted" into the first one with "outer" alignment rules. This
+    means that only NaN values in the aligned first dataset will be replaced by other
+    values.
+
+    Parameters
+    ----------
+    dset
+        The first dataset.
+    dsets
+        The datasets to combine ``dset`` with.
+
+    Returns
+    -------
+    xarray.Dataset
+        All datasets combined into one. Its coordinates will be the union of the
+        coordinates from all datasets.
+
+    See Also
+    --------
+    xarray.Dataset.combine_first
+        Method for combining datasets iteratively.
+    """
     if not dsets:
         return dset
     for ds_right in dsets:
@@ -283,17 +608,60 @@ def merge_tree_dset(
 
 
 # TODO: Option: Use closest dsets (need not be hollow)
+# TODO: is_hollow implies 'not root.has_data' ??
 def merge_tree_dset(
     root: xr.DataTree,
     drop_subtree: bool = True,
     overwrite: bool = False,
     inplace: bool = False,
 ) -> xr.DataTree | None:
-    """Merge the tree leaf datasets into the root node
+    """Merge the tree leaf datasets into the root node.
 
-    Todo
-    ----
-    Maybe we can just call combine_by_coords on all leaves?
+    Recursively collect the leaf child nodes of ``root`` and merge the data into a new
+    dataset with :py:meth:`~xarray.Dataset.combine_first`. Then place this dataset into
+    the root node and remove the node children.
+
+    The resulting dataset will be the "outer" join of all leaf dataset
+    dimensions/coordinates and merge the data with :py:meth:`~xarray.Dataset.fillna`
+    operations.
+
+    Attention
+    ---------
+    This only works correctly if the leaf datasets only overlap with NaN (no data)
+    values. If two or more datasets contain data at the same coordinates, data will be
+    lost by this operation!
+
+    Parameters
+    ----------
+    root
+        The root node whose child datasets should be merged. Must be hollow (only leaf
+        nodes may contain data).
+    drop_subtree
+        If ``True`` (default), remove the child nodes from ``root`` after merging.
+    overwrite
+        If ``True``, overwrite any existing dataset in ``root``. Default: ``False``.
+    inplace
+        If ``False`` (default), create a shallow copy of ``root`` for merging and return
+        it. ``root`` will not be modified.
+
+    Returns
+    -------
+    root_merged : xarray.DataTree
+        A shallow copy of ``root`` whose dataset is a combination of all child datasets.
+    None
+        If ``inplace=True``.
+
+    Raises
+    ------
+    ValueError
+        If :py:attr:`~xarray.DataTree.is_hollow` returns ``False`` for ``root``.
+    ValueError
+        If ``root`` contains a dataset and ``overwrite=False``.
+
+    See Also
+    --------
+    crace.tree.merge_by_combine
+        Function for merging the datasets
     """
     if not inplace:
         root = root.copy()  # Shallow copy
@@ -324,14 +692,89 @@ def merge_tree_dset(
 def map_impact_function(
     tree: xr.DataTree, func_map: FunctionMap | DatasetFunction
 ) -> xr.DataTree:
+    """Apply an impact function map onto a data tree.
+
+    If ``func_map`` is a single function/callable, it will be applied onto all nodes in
+    ``tree``.
+
+    If it is a mapping, the an algorithm identifies which function to apply for any node
+    in ``tree``. It performs the following checks, using the first match in this order:
+
+    - Match the full node path to the ``func_map`` key.
+    - Match the node name to the ``func_map`` key.
+    - Try the above steps (in order) for the parent node, if it exists.
+    - If the node is a leaf, match a key with the leaf node type.
+    - Use the default key, if it exists.
+
+    If no match was possible, no function will be applied to the node, and the returned
+    tree will have a node *without dataset* at this path.
+
+    The values of ``func_map`` can be either callables to apply to a dataset, or
+    strings. In the latter case, these strings will be used to identify functions stored
+    in the impact function registry.
+
+    Parameters
+    ----------
+    tree
+        The data tree to apply the function (map) to.
+    func_map
+        The function or function map to apply to the data tree. If a mapping, the keys
+        must identify node names or paths to apply the function to, and the values must
+        be functions or names of functions registered.
+
+    Returns
+    -------
+    tree_applied : xarray.DataTree
+        A tree isomorphic to ``tree``, whose nodes contain datasets transformed by
+        ``func_map``.
+
+    Raises
+    ------
+    ValueError
+        If a mapped function name is not registered.
+    """
     mapper = TreeMapper(tree=tree, func_map=func_map, registry=REGISTRY)
     mapper.apply(use_parent=True, use_merge=False)
     return mapper.result()
 
 
 def map_aggregate_function(
-    tree: xr.DataTree, func_map: FunctionMap | DatasetFunction
+    tree: xr.DataTree, func_map: FunctionMap | DatasetFunction | Callable
 ) -> xr.DataTree:
+    """Apply a aggregate function map onto a data tree.
+
+    If ``func_map`` is a single function/callable, it will be applied onto all nodes in
+    ``tree``.
+
+    If it is a mapping, the an algorithm identifies which function to apply for nodes
+    in ``tree``. It performs the following checks, using the first match in this order:
+
+    - Match the full node path to the ``func_map`` key.
+    - Match the node name to the ``func_map`` key.
+    - If the node is a leaf, match a key with the leaf node type.
+    - Use the default key, if it exists.
+
+    If no match was possible, no function will be applied to the node, and the returned
+    tree will have a node *without dataset* at this path.
+
+    If a node was matched and it does not contain data, :py:func:`merge_tree_dset` is
+    called on the node and the matched aggregate function will be applied onto the
+    result.
+
+    Parameters
+    ----------
+    tree
+        The data tree to apply the function (map) to.
+    func_map
+        The function or function map to apply to the data tree. If a mapping, the keys
+        must identify node names or paths to apply the function to, and the values must
+        be aggregate functions.
+
+    Returns
+    -------
+    tree_applied : xarray.DataTree
+        A tree whose nodes contain datasets transformed by ``func_map``.
+    """
     mapper = TreeMapper(tree=tree, func_map=func_map, registry=None)
     mapper.apply(use_parent=False, use_merge=True)
     return mapper.result()

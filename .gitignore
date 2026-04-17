@@ -69,7 +69,7 @@ instance/
 .scrapy
 
 # Sphinx documentation
-docs/_build/
+doc/_build/
 
 # PyBuilder
 .pybuilder/
@@ -221,6 +221,10 @@ __marimo__/
 
 /data
 /src/climadace/data/
+
+# Generated docs
+doc/generated
+doc/api/generated
 
 # macOS
 *.DS_Store

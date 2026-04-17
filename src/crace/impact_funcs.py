@@ -1,7 +1,7 @@
 """Impact Functions"""
 
 from abc import ABC, ABCMeta, abstractmethod
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from enum import StrEnum, auto
 from functools import partial
 from typing import Any, Callable, Final
@@ -33,9 +33,36 @@ class ImpactFunctionBase(ABC):
 #         return self.func(x)
 
 ImpactFunction = Callable[[DatasetOrArray], DatasetOrArray]
+"""The signature of an impact function"""
 
 
 class InterpolatedImpactFunction(ImpactFunctionBase):
+    """An impact function that is evaluated using linear interpolation.
+
+    The function stores data points :py:attr:`fp` and associated coordinates
+    :py:attr:`xp`. When called with input values ``x``, it returns the linearly
+    interpolated values of :py:attr:`fp`. See :py:func:`numpy.interp` for details.
+
+    Parameters
+    ----------
+    xp : ArrayLike
+        The coordinates of the data points.
+    fp : ArrayLike
+        The data points to interpolate.
+
+    Attributes
+    ----------
+    xp : ArrayLike
+        The coordinates of the data points.
+    fp : ArrayLike
+        The data points to interpolate.
+
+    See Also
+    --------
+    numpy.interp
+        The universal function used for interpolation.
+    """
+
     def __init__(self, xp: npt.ArrayLike, fp: npt.ArrayLike):
         super().__init__()
         self.xp = xp
@@ -52,7 +79,16 @@ class InterpolatedImpactFunction(ImpactFunctionBase):
     def from_func(
         cls, xp: npt.ArrayLike, impf: Callable[[npt.ArrayLike], npt.ArrayLike]
     ):
-        """Create from an impact function and intensity values to interpolate at"""
+        """Create from an impact function and intensity values to interpolate at
+
+        Parameters
+        ----------
+        xp : ArrayLike
+            The coordinates of the data points.
+        impf : Callable[[ArrayLike], ArrayLike]
+            The function yielding the :py:attr:`fp` data points at the ``xp``
+            coordinates.
+        """
         xp = np.asanyarray(xp)
         return cls(xp=xp, fp=impf(xp))
 
@@ -68,6 +104,18 @@ class ABCSingleton(ABCMeta):
 
 
 class ImpactFunctionRegistry(MutableMapping, metaclass=ABCSingleton):
+    """A mutable dictionary storing impact functions.
+
+    Attributes
+    ----------
+    map : dict
+        The stored impact functions. Key: Name associated with the function
+        (py:class:`str`). Value: The function itself (:py:class:`ImpactFunction`).
+    allow_overwrite : bool
+        If ``True``, inserted functions can be overwritten with new ones. If ``False``,
+        modifying the value of an existing key will throw an error.
+    """
+
     def __init__(self):
         self.map = {}
         self.allow_overwrite = False
@@ -111,7 +159,11 @@ class ImpactFunctionRegistry(MutableMapping, metaclass=ABCSingleton):
 
 
 REGISTRY = ImpactFunctionRegistry()
+"""The default registry for impact functions.
 
+Stores default impact functions and those registered by name with
+:py:func`impact_function`.
+"""
 
 # class impact_function:
 #     def __init__(self, *, interpolate=None):
@@ -125,8 +177,38 @@ REGISTRY = ImpactFunctionRegistry()
 
 # Define decorator
 def impact_function(
-    func=None, *, interp_at: npt.ArrayLike | None = None, name: str | None = None
+    func: ImpactFunction | None = None,
+    *,
+    interp_at: npt.ArrayLike | None = None,
+    name: str | None = None,
 ):
+    """Decorator for defining and registering impact functions.
+
+    Any function adhering to the :py:class:`ImpactFunction` signature can directly be
+    used as impact function. This decorator can be used for convenience to register
+    a function in the :py:const:`REGISTRY`, or to modify the decorated function.
+
+    Parameters
+    ----------
+    func : ImpactFunction
+        The decorated function.
+    interp_at : ArrayLike or None
+        If not ``None``, the decorated function will be linearly interpolated between
+        the values of ``interp_at`` and transformed into an
+        :py:class:`~impact_funcs.InterpolatedImpactFunction`. This only works if the
+        function conforms to :external+numpy:ref:`universal functions<ufuncs-basics>`.
+        Will call :py:meth:`~~impact_funcs.InterpolatedImpactFunction.from_func` with
+        parameters ``xp=interp_at`` and ``func=f``, where ``f`` is the decorated
+        function. Defaults to ``None``.
+    name : str or None
+        If not ``None``, the function will be registered at :py:const:`REGISTRY` under
+        this name. Defaults to ``None``.
+
+    Returns
+    -------
+    collections.abc.Callable or ~impact_funcs.InterpolatedImpactFunction
+        The decorated function.
+    """
     if func is None:
         return partial(impact_function, interp_at=interp_at, name=name)
 
@@ -149,6 +231,9 @@ class FuncType(StrEnum):
 
 FuncDefault: Final = FuncType.default
 FuncLeaf: Final = FuncType.leaf
+
+FunctionMapping = Mapping[str | FuncType, ImpactFunction | str]
+"""A mapping used for identifying impact and aggregate functions."""
 
 
 class FunctionMap(dict, ABC):
