@@ -8,6 +8,10 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: mixed-line-ending
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.7  # uv version
+    hooks:
+      - id: uv-lock
   - repo: https://github.com/kynan/nbstripout
     rev: 0.9.0
     hooks:
