@@ -16,7 +16,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "hypothesis[numpy]>=6.150.0",
-    "pre-commit>=4.5.1",  # Not needed for uv (?)
     "pytest>=9.0.1",
     "sphinx-autobuild>=2025.8.25",
     {include-group = "doc"},
