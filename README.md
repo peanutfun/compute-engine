@@ -9,6 +9,7 @@ With pip:
 ```
 pip install -e ./
 pip install --group dev
+pip install pre-commit
 pre-commit install
 ```
 
